@@ -1,6 +1,7 @@
 """桌面应用启动入口。"""
 
 import logging
+import sys
 
 from excel_batch_renamer.ui.main_window import MainWindow
 
@@ -19,6 +20,12 @@ def main() -> None:
 
     configure_logging()
     window = MainWindow()
+    if "--smoke-test" in sys.argv:
+        window.withdraw()
+        window.update_idletasks()
+        print("ExcelBatchRenamer portable runtime smoke test passed.")
+        window.destroy()
+        return
     window.mainloop()
 
 

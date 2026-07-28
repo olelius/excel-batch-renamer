@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "excel-batch-renamer"
-version = "0.1.0"
+version = "0.1.1"
 description = "面向离线 Windows 7 流水线的 Excel 批量文件整理工具"
 requires-python = ">=3.8,<3.9"
 dependencies = [

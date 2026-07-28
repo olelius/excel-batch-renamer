@@ -116,6 +116,47 @@ class XlsxReaderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "第一行缺少必需列"):
             read_folder_task(path)
 
+    def test_folder_headers_ignore_internal_unicode_whitespace(self):
+        path = self.base_path / "folder-header-spaces.xlsx"
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.append([" 序 号 ", "文件　夹\t名称"])
+        worksheet.append([1, "规划 管理"])
+        workbook.save(str(path))
+        workbook.close()
+
+        self.assertEqual(
+            read_folder_task(path),
+            [FolderTaskRow(sequence=1, folder_name="规划 管理")],
+        )
+
+    def test_image_headers_ignore_internal_unicode_whitespace(self):
+        path = self.base_path / "image-header-spaces.xlsx"
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "1"
+        worksheet.append(["序 号", "文 件　题 名", " 页\t次 "])
+        worksheet.append([1, "文件 A", "001-001"])
+        workbook.save(str(path))
+        workbook.close()
+
+        self.assertEqual(
+            read_image_task(path, "1"),
+            [ImageTaskRow(file_title="文件 A", page_reference="001-001")],
+        )
+
+    def test_normalized_duplicate_headers_are_rejected(self):
+        path = self.base_path / "duplicate-normalized-header.xlsx"
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.append(["序号", "序 号", "文件夹名称"])
+        worksheet.append([1, 1, "名称"])
+        workbook.save(str(path))
+        workbook.close()
+
+        with self.assertRaisesRegex(ValueError, "第一行包含重复列：序号"):
+            read_folder_task(path)
+
     def test_image_task_requires_named_worksheet(self):
         path = self.base_path / "missing-sheet.xlsx"
         workbook = Workbook()

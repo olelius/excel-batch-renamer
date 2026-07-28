@@ -84,10 +84,10 @@ def read_image_task(
 
 
 def _read_header_indexes(worksheet, required_headers: Sequence[str]) -> Dict[str, int]:
-    """读取第一行表头，并返回必需列的零基索引。"""
+    """读取第一行表头，忽略其中空白字符并返回必需列的零基索引。"""
 
     header_values = [
-        _as_optional_text(cell.value)
+        _normalize_header(cell.value)
         for cell in next(worksheet.iter_rows(min_row=1, max_row=1))
     ]
     indexes = {}
@@ -101,6 +101,14 @@ def _read_header_indexes(worksheet, required_headers: Sequence[str]) -> Dict[str
             raise ValueError("第一行包含重复列：{}".format(header))
         indexes[header] = matches[0]
     return indexes
+
+
+def _normalize_header(value) -> str:
+    """删除表头中的全部 Unicode 空白字符，不修改数据单元格。"""
+
+    if value is None:
+        return ""
+    return "".join(str(value).split())
 
 
 def _iter_contiguous_rows(worksheet, header_indexes: Dict[str, int]):

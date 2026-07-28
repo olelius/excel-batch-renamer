@@ -10,6 +10,8 @@ from excel_batch_renamer.core.models import FolderTaskRow, ImageTaskRow
 
 FOLDER_HEADERS = ("序号", "文件夹名称")
 IMAGE_HEADERS = ("序号", "文件题名", "页次")
+FOLDER_HEADER_ROW = 1
+IMAGE_HEADER_ROW = 3
 
 
 def list_worksheet_names(workbook_path: Path) -> List[str]:
@@ -39,9 +41,17 @@ def read_folder_task(workbook_path: Path) -> List[FolderTaskRow]:
             raise ValueError("文件夹任务表必须且只能包含一个工作表")
 
         worksheet = workbook.worksheets[0]
-        header_indexes = _read_header_indexes(worksheet, FOLDER_HEADERS)
+        header_indexes = _read_header_indexes(
+            worksheet,
+            FOLDER_HEADERS,
+            FOLDER_HEADER_ROW,
+        )
         result = []
-        for values in _iter_contiguous_rows(worksheet, header_indexes):
+        for values in _iter_contiguous_rows(
+            worksheet,
+            header_indexes,
+            FOLDER_HEADER_ROW + 1,
+        ):
             result.append(
                 FolderTaskRow(
                     sequence=_as_integer(values["序号"], "序号"),
@@ -69,9 +79,17 @@ def read_image_task(
             raise ValueError("工作表不存在：{}".format(worksheet_name))
 
         worksheet = workbook[worksheet_name]
-        header_indexes = _read_header_indexes(worksheet, IMAGE_HEADERS)
+        header_indexes = _read_header_indexes(
+            worksheet,
+            IMAGE_HEADERS,
+            IMAGE_HEADER_ROW,
+        )
         result = []
-        for values in _iter_contiguous_rows(worksheet, header_indexes):
+        for values in _iter_contiguous_rows(
+            worksheet,
+            header_indexes,
+            IMAGE_HEADER_ROW + 1,
+        ):
             result.append(
                 ImageTaskRow(
                     file_title=_as_required_text(values["文件题名"], "文件题名"),
@@ -83,22 +101,32 @@ def read_image_task(
         workbook.close()
 
 
-def _read_header_indexes(worksheet, required_headers: Sequence[str]) -> Dict[str, int]:
-    """读取第一行表头，忽略其中空白字符并返回必需列的零基索引。"""
+def _read_header_indexes(
+    worksheet,
+    required_headers: Sequence[str],
+    header_row: int,
+) -> Dict[str, int]:
+    """读取指定行表头，忽略其中空白字符并返回必需列的零基索引。"""
 
     header_values = [
         _normalize_header(cell.value)
-        for cell in next(worksheet.iter_rows(min_row=1, max_row=1))
+        for cell in next(
+            worksheet.iter_rows(min_row=header_row, max_row=header_row)
+        )
     ]
+    row_label = {1: "第一行", 3: "第三行"}.get(
+        header_row,
+        "第{}行".format(header_row),
+    )
     indexes = {}
     for header in required_headers:
         matches = [
             index for index, value in enumerate(header_values) if value == header
         ]
         if not matches:
-            raise ValueError("第一行缺少必需列：{}".format(header))
+            raise ValueError("{}缺少必需列：{}".format(row_label, header))
         if len(matches) > 1:
-            raise ValueError("第一行包含重复列：{}".format(header))
+            raise ValueError("{}包含重复列：{}".format(row_label, header))
         indexes[header] = matches[0]
     return indexes
 
@@ -111,11 +139,15 @@ def _normalize_header(value) -> str:
     return "".join(str(value).split())
 
 
-def _iter_contiguous_rows(worksheet, header_indexes: Dict[str, int]):
-    """从第二行读取数据，在首个完全空白数据行结束。"""
+def _iter_contiguous_rows(
+    worksheet,
+    header_indexes: Dict[str, int],
+    first_data_row: int,
+):
+    """从指定行读取数据，在首个完全空白数据行结束。"""
 
     for row in worksheet.iter_rows(
-        min_row=2,
+        min_row=first_data_row,
         max_col=worksheet.max_column,
         values_only=True,
     ):

@@ -71,6 +71,8 @@ class XlsxReaderTests(unittest.TestCase):
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "1"
+        worksheet.append(["图片档案目录"])
+        worksheet.append(["制表说明"])
         worksheet.append(["备注", "序号", "页次", "文件题名"])
         worksheet.append(["忽略", 100, 1, "文件A"])
         worksheet.append(["忽略", 200, "005", "文件B"])
@@ -96,6 +98,8 @@ class XlsxReaderTests(unittest.TestCase):
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "1"
+        worksheet.append(["图片档案目录"])
+        worksheet.append(["制表说明"])
         worksheet.append(["序号", "文件题名", "页次", "备注"])
         worksheet.append([1, None, None, "该行并非完全空白"])
         workbook.save(str(path))
@@ -135,6 +139,8 @@ class XlsxReaderTests(unittest.TestCase):
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "1"
+        worksheet.append(["图片档案目录"])
+        worksheet.append(["制表说明"])
         worksheet.append(["序 号", "文 件　题 名", " 页\t次 "])
         worksheet.append([1, "文件 A", "001-001"])
         workbook.save(str(path))
@@ -144,6 +150,21 @@ class XlsxReaderTests(unittest.TestCase):
             read_image_task(path, "1"),
             [ImageTaskRow(file_title="文件 A", page_reference="001-001")],
         )
+
+    def test_image_headers_must_be_in_third_row(self):
+        path = self.base_path / "image-header-first-row.xlsx"
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "1"
+        worksheet.append(["序号", "文件题名", "页次"])
+        worksheet.append(["说明"])
+        worksheet.append(["不是表头"])
+        worksheet.append([1, "文件A", "001-001"])
+        workbook.save(str(path))
+        workbook.close()
+
+        with self.assertRaisesRegex(ValueError, "第三行缺少必需列"):
+            read_image_task(path, "1")
 
     def test_normalized_duplicate_headers_are_rejected(self):
         path = self.base_path / "duplicate-normalized-header.xlsx"

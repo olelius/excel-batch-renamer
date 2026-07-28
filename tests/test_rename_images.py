@@ -28,6 +28,8 @@ class RenameImagesTests(unittest.TestCase):
         workbook.remove(workbook.active)
         for sheet_name, rows in sheets:
             worksheet = workbook.create_sheet(sheet_name)
+            worksheet.append(["图片档案目录"])
+            worksheet.append(["制表说明"])
             worksheet.append(["序号", "文件题名", "页次", "其他列"])
             for index, (title, page_reference) in enumerate(rows, start=1):
                 worksheet.append([index, title, page_reference, "忽略"])

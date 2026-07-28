@@ -1,0 +1,4 @@
+-r requirements.txt
+setuptools==65.5.1
+wheel==0.38.4
+PyInstaller==4.10

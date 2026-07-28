@@ -7,11 +7,18 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+.venv*/
 venv/
 env/
 build/
 dist/
 *.egg-info/
+
+# Project-local tools and isolated worktrees
+.python38/
+.tools/
+.worktrees/
+.artifacts/
 
 # Node / frontend
 node_modules/

@@ -8,7 +8,7 @@
 - 默认分支：`main`
 - 项目目标：根据 Excel 表格批量创建文件夹或修改文件夹名称，并根据文件夹批量修改 JPG 图片名称。
 - 工具定位：受控流水线中的小型作业插件，输入由上游人工流程保证符合规范，不建设面向任意脏数据的通用清洗和恢复系统。
-- 当前阶段（2026-07-28）：首个可交付版本的需求、领域术语、系统架构和验收场景已确认；Python 3.8 项目结构、纯业务规则、`.xlsx` 读取适配和 `unittest` 测试入口已建立，三个业务服务、Tkinter UI 与便携目录打包尚待实现。
+- 当前阶段（2026-07-28）：首个可交付版本的三个业务服务、Tkinter 三标签页 UI、52 项自动化测试和 PyInstaller 4.10 双 `onedir` 构建均已完成；两个便携目录已在当前 Windows 构建机通过启动自检，并包含 Python、Tk/Tcl、openpyxl、VCRUNTIME140 与项目内 Windows SDK 提取的 x64 UCRT。真实离线 Windows 7 SP1 x64 兼容性仍待用户在目标机验证。
 - 已确认技术约束：使用 Python；客户机为 64 位 Windows 7 旗舰版 SP1；首版只读取 `.xlsx`；交付物复制到客户机后可直接双击打开 UI，无需安装 Python、编程语言或其他开发环境。
 - 已确认交付方式：使用完整便携目录交付，用户必须复制整个目录并双击其中的 EXE；不依赖安装程序，不要求把全部内容压成单个 EXE。
 - 已确认构建配置：测试版和正式交付版都使用完整便携目录及同一代码；测试版启动时保留 CMD 控制台以显示日志和异常，正式交付版不得显示控制台，只显示 UI。
@@ -115,20 +115,20 @@ $env:PYTHONPATH = "$PWD\src"
 & "$PWD\.venv\Scripts\python.exe" -m unittest discover -s tests -v
 & "$PWD\.venv\Scripts\python.exe" -m compileall -q src tests
 & "$PWD\.venv\Scripts\python.exe" -m pip check
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PWD\packaging\build-portable.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PWD\packaging\verify-portable.ps1"
 git diff --check
 git status --short
 ```
 
-测试、编译检查和依赖检查必须全部通过；真实 Win7 兼容性仍由用户在离线 64 位 Windows 7 SP1 客户机上验证。
+首次准备 UCRT 时执行 `packaging/prepare-ucrt.ps1`，它只把微软官方 Windows SDK 组件下载并解包到项目 `.tools`，不安装到客户机。测试、编译检查、依赖检查、双目录构建和当前机器启动自检必须全部通过；真实 Win7 兼容性仍由用户在离线 64 位 Windows 7 SP1 客户机上验证。
 
 ## 7. 下一步
 
-需求与架构基线已经确认。下一步必须从最新 `main` 创建新的功能分支，按以下顺序实现：
+首个可交付版本的开发侧实现已完成。下一步：
 
-1. 建立 Python 3.8 项目虚拟环境、包结构和测试入口；
-2. 先实现并测试纯业务规则与 Excel 读取；
-3. 实现文件夹创建、文件夹重命名和图片重命名服务；
-4. 实现 Tkinter/ttk 三标签页 UI；
-5. 使用 PyInstaller 4.10 `onedir` 生成测试版和正式版便携目录；
-6. 执行 `docs/requirements/acceptance-scenarios.md` 中的验收场景；
-7. 开发侧完成便携目录检查后，由用户在另一台离线 64 位 Win7 SP1 电脑完成最终兼容性测试。
+1. 完成最终自动化测试、便携目录内容检查和发布归档；
+2. 合并打包分支并发布 GitHub 版本；
+3. 用户把整个正式版目录复制到另一台离线 64 位 Windows 7 旗舰版 SP1 电脑；
+4. 用户按 `docs/requirements/acceptance-scenarios.md` 执行真实目标机测试；
+5. 若目标机发现兼容问题，保留测试版控制台输出并从最新 `main` 创建独立修复分支。

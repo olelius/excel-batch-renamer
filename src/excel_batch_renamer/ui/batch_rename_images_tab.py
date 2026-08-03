@@ -33,12 +33,19 @@ class BatchRenameImagesTab(TaskTab):
         workbook = self.require_path(self.workbook_variable.get(), "Excel 表格")
         directory = self.require_path(self.directory_variable.get(), "父文件夹")
         result = batch_rename_images(workbook, directory)
+        skipped_names = ""
+        if result.skipped_worksheets:
+            skipped_names = "（{}）".format(
+                "、".join(result.skipped_worksheets)
+            )
         return (
             "完成：已处理 {} 个文件夹、共 {} 张图片，已重命名 {} 张，"
-            "未变化 {} 张"
+            "未变化 {} 张；已跳过空工作表 {} 个{}"
         ).format(
             result.folders,
             result.total,
             result.renamed,
             result.unchanged,
+            len(result.skipped_worksheets),
+            skipped_names,
         )

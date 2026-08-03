@@ -28,6 +28,36 @@ def list_worksheet_names(workbook_path: Path) -> List[str]:
         workbook.close()
 
 
+def image_task_worksheet_is_empty(
+    workbook_path: Path,
+    worksheet_name: str,
+) -> bool:
+    """判断图片工作表的首个数据行是否完全为空。"""
+
+    workbook = load_workbook(
+        filename=str(workbook_path),
+        read_only=True,
+        data_only=True,
+    )
+    try:
+        if worksheet_name not in workbook.sheetnames:
+            raise ValueError("工作表不存在：{}".format(worksheet_name))
+
+        worksheet = workbook[worksheet_name]
+        first_data_row = next(
+            worksheet.iter_rows(
+                min_row=IMAGE_HEADER_ROW + 1,
+                max_row=IMAGE_HEADER_ROW + 1,
+                max_col=worksheet.max_column,
+                values_only=True,
+            ),
+            (),
+        )
+        return all(_is_blank(value) for value in first_data_row)
+    finally:
+        workbook.close()
+
+
 def read_folder_task(workbook_path: Path) -> List[FolderTaskRow]:
     """读取仅含一个工作表的文件夹任务表。"""
 

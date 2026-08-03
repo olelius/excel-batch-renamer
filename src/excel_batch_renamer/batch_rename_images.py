@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import List, Sequence
 
 from excel_batch_renamer.core.naming import extract_folder_sequence
-from excel_batch_renamer.infrastructure.xlsx_reader import list_worksheet_names
+from excel_batch_renamer.infrastructure.xlsx_reader import (
+    image_task_worksheet_is_empty,
+    list_worksheet_names,
+)
 from excel_batch_renamer.rename_images import (
     ImageRenameExecutionError,
     ImageRenamePlanItem,
@@ -24,6 +27,14 @@ class BatchImageFolderPlan:
 
 
 @dataclass(frozen=True)
+class BatchImageRenamePlan:
+    """全部可执行文件夹计划及已跳过的空数字工作表。"""
+
+    folders: Sequence[BatchImageFolderPlan]
+    skipped_worksheets: Sequence[str]
+
+
+@dataclass(frozen=True)
 class BatchImageRenameResult:
     """一次多工作表图片任务的汇总统计。"""
 
@@ -31,6 +42,7 @@ class BatchImageRenameResult:
     total: int
     renamed: int
     unchanged: int
+    skipped_worksheets: Sequence[str] = ()
 
 
 class BatchImageRenameExecutionError(RuntimeError):
@@ -62,7 +74,7 @@ class BatchImageRenameExecutionError(RuntimeError):
 def build_batch_image_rename_plan(
     workbook_path: Path,
     parent_directory: Path,
-) -> List[BatchImageFolderPlan]:
+) -> BatchImageRenamePlan:
     """先验证全部数字工作表及对应直属文件夹，再返回整批计划。"""
 
     workbook_path = Path(workbook_path)
@@ -101,8 +113,13 @@ def build_batch_image_rename_plan(
         folders_by_sequence.setdefault(sequence, []).append(path)
 
     plans = []
+    skipped_worksheets = []
     for sequence in sorted(worksheets_by_sequence):
         worksheet_name = worksheets_by_sequence[sequence]
+        if image_task_worksheet_is_empty(workbook_path, worksheet_name):
+            skipped_worksheets.append(worksheet_name)
+            continue
+
         matches = folders_by_sequence.get(sequence, [])
         if not matches:
             raise ValueError(
@@ -134,7 +151,10 @@ def build_batch_image_rename_plan(
             )
         )
 
-    return plans
+    return BatchImageRenamePlan(
+        folders=tuple(plans),
+        skipped_worksheets=tuple(skipped_worksheets),
+    )
 
 
 def batch_rename_images(
@@ -143,13 +163,13 @@ def batch_rename_images(
 ) -> BatchImageRenameResult:
     """按工作表编号处理全部匹配文件夹；执行失败时立即停止且不回滚。"""
 
-    plans = build_batch_image_rename_plan(workbook_path, parent_directory)
-    total = sum(len(folder_plan.items) for folder_plan in plans)
+    plan = build_batch_image_rename_plan(workbook_path, parent_directory)
+    total = sum(len(folder_plan.items) for folder_plan in plan.folders)
     completed_folders = 0
     renamed = 0
     unchanged = 0
 
-    for folder_plan in plans:
+    for folder_plan in plan.folders:
         try:
             result = execute_image_rename_plan(folder_plan.items)
         except ImageRenameExecutionError as error:
@@ -163,6 +183,7 @@ def batch_rename_images(
                     total=total,
                     renamed=renamed + error.result.renamed,
                     unchanged=unchanged + error.result.unchanged,
+                    skipped_worksheets=plan.skipped_worksheets,
                 ),
             ) from error
 
@@ -175,4 +196,5 @@ def batch_rename_images(
         total=total,
         renamed=renamed,
         unchanged=unchanged,
+        skipped_worksheets=plan.skipped_worksheets,
     )

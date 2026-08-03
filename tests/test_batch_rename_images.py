@@ -67,11 +67,53 @@ class BatchRenameImagesTests(unittest.TestCase):
         )
         folder = self._make_folder("001——", [1])
 
-        plans = build_batch_image_rename_plan(self.workbook_path, self.root)
+        plan = build_batch_image_rename_plan(self.workbook_path, self.root)
 
-        self.assertEqual(len(plans), 1)
-        self.assertEqual(plans[0].worksheet_name, "1")
-        self.assertEqual(plans[0].folder_path, folder)
+        self.assertEqual(len(plan.folders), 1)
+        self.assertEqual(plan.folders[0].worksheet_name, "1")
+        self.assertEqual(plan.folders[0].folder_path, folder)
+        self.assertEqual(plan.skipped_worksheets, ())
+
+    def test_empty_numeric_worksheet_is_skipped_without_matching_folder(self):
+        self._write_workbook(
+            [
+                ("1", [("甲", "001-001")]),
+                ("2", []),
+            ]
+        )
+        first = self._make_folder("001——", [1])
+
+        result = batch_rename_images(self.workbook_path, self.root)
+
+        self.assertEqual(result.folders, 1)
+        self.assertEqual(result.skipped_worksheets, ("2",))
+        self.assertTrue((first / "001甲.jpg").exists())
+
+    def test_completely_blank_numeric_worksheet_is_skipped(self):
+        workbook = Workbook()
+        workbook.active.title = "1"
+        workbook.save(self.workbook_path)
+
+        result = batch_rename_images(self.workbook_path, self.root)
+
+        self.assertEqual(
+            (result.folders, result.total, result.renamed, result.unchanged),
+            (0, 0, 0, 0),
+        )
+        self.assertEqual(result.skipped_worksheets, ("1",))
+
+    def test_nonempty_sheet_with_invalid_headers_still_blocks_batch(self):
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "1"
+        worksheet.cell(row=4, column=1, value="存在任务数据")
+        workbook.save(self.workbook_path)
+        folder = self._make_folder("001——", [1])
+
+        with self.assertRaisesRegex(ValueError, "第三行缺少必需列"):
+            batch_rename_images(self.workbook_path, self.root)
+
+        self.assertTrue((folder / "001.jpg").exists())
 
     def test_rejects_workbook_without_numeric_worksheet(self):
         self._write_workbook([("说明", [])])

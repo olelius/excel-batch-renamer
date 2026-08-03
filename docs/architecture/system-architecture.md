@@ -22,6 +22,7 @@ UI 不直接解析 Excel，也不直接操作文件系统。业务规则不依�
 - 创建文件夹标签页；
 - 重命名文件夹标签页；
 - 重命名图片标签页；
+- 批量重命名图片标签页；
 - 每个标签页维护自己的目录和输入状态；
 - 显示完成数量、失败对象和错误原因。
 
@@ -30,6 +31,7 @@ UI 不直接解析 Excel，也不直接操作文件系统。业务规则不依�
 - 组织一次任务的读取、计划和执行；
 - 文件夹创建与重命名服务；
 - 图片重命名服务；
+- 多工作表与多文件夹批量图片重命名服务；
 - 失败时停止后续操作，不复制备份、不自动回滚。
 
 ### 纯业务规则
@@ -57,17 +59,17 @@ ExcelBatchRenamer/
 │  │  ├─ main_window.py
 │  │  ├─ create_folders_tab.py
 │  │  ├─ rename_folders_tab.py
-│  │  └─ rename_images_tab.py
-│  ├─ services/
-│  │  ├─ folder_service.py
-│  │  └─ image_service.py
+│  │  ├─ rename_images_tab.py
+│  │  └─ batch_rename_images_tab.py
+│  ├─ create_folders.py
+│  ├─ rename_folders.py
+│  ├─ rename_images.py
+│  ├─ batch_rename_images.py
 │  ├─ core/
 │  │  ├─ naming.py
-│  │  ├─ page_ranges.py
-│  │  └─ models.py
+│  │  └─ page_ranges.py
 │  └─ infrastructure/
-│     ├─ xlsx_reader.py
-│     └─ filesystem.py
+│     └─ xlsx_reader.py
 ├─ tests/
 ├─ packaging/
 ├─ docs/

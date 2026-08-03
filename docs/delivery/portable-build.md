@@ -78,7 +78,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\verify-relea
 
 - 打包入口可以启动；
 - Tkinter 主窗口可以创建；
-- openpyxl 和三个业务服务已经被打入程序；
+- openpyxl 和四个业务服务已经被打入程序；
 - 正式版与测试版使用同一业务代码；
 - 正式版使用无控制台启动器；
 - 两个目录包含声明的项目本地运行依赖。

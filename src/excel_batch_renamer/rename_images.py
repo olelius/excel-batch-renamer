@@ -167,6 +167,14 @@ def rename_images(
     """校验并执行图片重命名，返回适合 UI 展示的完成统计。"""
 
     plan = build_image_rename_plan(workbook_path, worksheet_name, folder_path)
+    return execute_image_rename_plan(plan)
+
+
+def execute_image_rename_plan(
+    plan: Sequence[ImageRenamePlanItem],
+) -> ImageRenameResult:
+    """执行已经完整校验的图片计划，供单目录和多目录任务复用。"""
+
     renamed = 0
     unchanged = 0
 

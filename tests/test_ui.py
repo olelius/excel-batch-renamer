@@ -53,6 +53,7 @@ class UiTests(unittest.TestCase):
             total=3,
             renamed=2,
             unchanged=1,
+            skipped_worksheets=("3", "5"),
         )
 
         with patch(
@@ -67,6 +68,7 @@ class UiTests(unittest.TestCase):
         )
         self.assertIn("已处理 2 个文件夹", status)
         self.assertIn("未变化 1 张", status)
+        self.assertIn("已跳过空工作表 2 个（3、5）", status)
 
     def test_image_tab_loads_sheets_then_auto_selects_folder_match(self):
         tab = self.window.rename_images_tab

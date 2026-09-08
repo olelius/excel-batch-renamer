@@ -21,8 +21,11 @@ def main() -> None:
     configure_logging()
     window = MainWindow()
     if "--smoke-test" in sys.argv:
+        from excel_batch_renamer.runtime_smoke import check_pdf_runtime
+
         window.withdraw()
         window.update_idletasks()
+        check_pdf_runtime()
         print("ExcelBatchRenamer portable runtime smoke test passed.")
         window.destroy()
         return

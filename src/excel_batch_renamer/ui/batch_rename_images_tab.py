@@ -27,7 +27,7 @@ class BatchRenameImagesTab(TaskTab):
         self.add_execute_area(self._execute)
 
     def _execute(self) -> None:
-        self.run_and_report(self._rename_images, "批量重命名图片")
+        self.run_and_report(self._rename_images, "批量重命名图片并生成 PDF")
 
     def _rename_images(self) -> str:
         workbook = self.require_path(self.workbook_variable.get(), "Excel 表格")
@@ -40,12 +40,14 @@ class BatchRenameImagesTab(TaskTab):
             )
         return (
             "完成：已处理 {} 个文件夹、共 {} 张图片，已重命名 {} 张，"
-            "未变化 {} 张；已跳过空工作表 {} 个{}"
+            "未变化 {} 张；已生成 PDF {} 个，保存在各原图片文件夹"
+            "（JPG 已保留）；已跳过空工作表 {} 个{}"
         ).format(
             result.folders,
             result.total,
             result.renamed,
             result.unchanged,
+            result.generated_pdfs,
             len(result.skipped_worksheets),
             skipped_names,
         )

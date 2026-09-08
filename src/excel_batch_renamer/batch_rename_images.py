@@ -1,4 +1,4 @@
-"""按数字工作表批量匹配多个项目文件夹并重命名图片。"""
+"""按数字工作表批量匹配项目文件夹，重命名图片并自动生成 PDF。"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +43,7 @@ class BatchImageRenameResult:
     renamed: int
     unchanged: int
     skipped_worksheets: Sequence[str] = ()
+    generated_pdfs: int = 0
 
 
 class BatchImageRenameExecutionError(RuntimeError):
@@ -55,18 +56,33 @@ class BatchImageRenameExecutionError(RuntimeError):
         failed_path: Path,
         reason: BaseException,
         result: BatchImageRenameResult,
+        operation: str = "重命名图片",
     ) -> None:
         self.worksheet_name = worksheet_name
         self.folder_path = folder_path
         self.failed_path = failed_path
         self.reason = reason
         self.result = result
+        self.operation = operation
         super().__init__(
-            "批量重命名图片失败：工作表 {}，文件夹 {}，失败对象 {}；原因：{}".format(
+            (
+                "批量图片任务失败：工作表 {}，文件夹 {}，失败步骤 {}，"
+                "失败对象 {}；原因：{}；已完成 {} 个文件夹，"
+                "已重命名 {} 张，未变化 {} 张，已生成 PDF {} 个"
+                "（保存在各原图片文件夹）；已跳过空工作表 {} 个{}"
+            ).format(
                 worksheet_name,
                 folder_path,
+                operation,
                 failed_path,
                 reason,
+                result.folders,
+                result.renamed,
+                result.unchanged,
+                result.generated_pdfs,
+                len(result.skipped_worksheets),
+                "（{}）".format("、".join(result.skipped_worksheets))
+                if result.skipped_worksheets else "",
             )
         )
 
@@ -168,6 +184,7 @@ def batch_rename_images(
     completed_folders = 0
     renamed = 0
     unchanged = 0
+    generated_pdfs = 0
 
     for folder_plan in plan.folders:
         try:
@@ -184,12 +201,15 @@ def batch_rename_images(
                     renamed=renamed + error.result.renamed,
                     unchanged=unchanged + error.result.unchanged,
                     skipped_worksheets=plan.skipped_worksheets,
+                    generated_pdfs=generated_pdfs + error.result.generated_pdfs,
                 ),
+                operation=error.operation,
             ) from error
 
         completed_folders += 1
         renamed += result.renamed
         unchanged += result.unchanged
+        generated_pdfs += result.generated_pdfs
 
     return BatchImageRenameResult(
         folders=completed_folders,
@@ -197,4 +217,5 @@ def batch_rename_images(
         renamed=renamed,
         unchanged=unchanged,
         skipped_worksheets=plan.skipped_worksheets,
+        generated_pdfs=generated_pdfs,
     )

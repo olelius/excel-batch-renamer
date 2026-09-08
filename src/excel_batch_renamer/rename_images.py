@@ -17,6 +17,10 @@ from excel_batch_renamer.core.naming import (
     worksheet_name_for_folder,
 )
 from excel_batch_renamer.core.page_ranges import build_page_title_map
+from excel_batch_renamer.infrastructure.pdf_writer import (
+    validate_jpeg,
+    write_jpeg_pdf,
+)
 from excel_batch_renamer.infrastructure.xlsx_reader import (
     list_worksheet_names,
     read_image_task,
@@ -25,36 +29,50 @@ from excel_batch_renamer.infrastructure.xlsx_reader import (
 
 @dataclass(frozen=True)
 class ImageRenamePlanItem:
-    """一张图片的当前路径、目标路径和页码。"""
+    """一张图片的路径、页码和本次 Excel 题名，供改名与 PDF 分组复用。"""
 
     page: int
     source: Path
     target: Path
+    file_title: str
 
 
 @dataclass(frozen=True)
 class ImageRenameResult:
-    """一次图片重命名任务的统计结果。"""
+    """一次图片改名及自动生成 PDF 任务的统计结果。"""
 
     total: int
     renamed: int
     unchanged: int
+    generated_pdfs: int = 0
 
 
 class ImageRenameExecutionError(RuntimeError):
-    """文件系统改名失败，并携带失败对象与已完成统计。"""
+    """改名或 PDF 生成失败，并携带失败步骤、对象与已完成统计。"""
 
     def __init__(
         self,
         failed_path: Path,
         reason: BaseException,
         result: ImageRenameResult,
+        operation: str = "重命名图片",
     ) -> None:
         self.failed_path = failed_path
         self.reason = reason
         self.result = result
+        self.operation = operation
         super().__init__(
-            "重命名图片失败：{}；原因：{}".format(failed_path, reason)
+            (
+                "{}失败：{}；原因：{}；已重命名 {} 张，未变化 {} 张，"
+                "已生成 PDF {} 个（保存在原图片文件夹）"
+            ).format(
+                operation,
+                failed_path,
+                reason,
+                result.renamed,
+                result.unchanged,
+                result.generated_pdfs,
+            )
         )
 
 
@@ -154,8 +172,9 @@ def build_image_rename_plan(
         if target.exists() and target_key not in source_keys:
             raise ValueError("目标名称已被占用：{}".format(target))
 
-        plan.append(ImageRenamePlanItem(page, source, target))
+        plan.append(ImageRenamePlanItem(page, source, target, page_titles[page]))
 
+    _validate_pdf_inputs(plan)
     return plan
 
 
@@ -164,7 +183,7 @@ def rename_images(
     worksheet_name: str,
     folder_path: Path,
 ) -> ImageRenameResult:
-    """校验并执行图片重命名，返回适合 UI 展示的完成统计。"""
+    """校验、重命名 JPG 并按题名自动生成 PDF，保留原图片。"""
 
     plan = build_image_rename_plan(workbook_path, worksheet_name, folder_path)
     return execute_image_rename_plan(plan)
@@ -173,10 +192,15 @@ def rename_images(
 def execute_image_rename_plan(
     plan: Sequence[ImageRenamePlanItem],
 ) -> ImageRenameResult:
-    """执行已经完整校验的图片计划，供单目录和多目录任务复用。"""
+    """执行已完整校验的图片计划，再从本次改名后路径生成同题名 PDF。
+
+    同一题名在不同 Excel 行中出现时仍按页码升序归入同一个 PDF。
+    每次重跑都重新生成同名 PDF，不依赖执行记录或删除旧题名的 PDF。
+    """
 
     renamed = 0
     unchanged = 0
+    generated_pdfs = 0
 
     for item in plan:
         if _windows_name_key(item.source.name) == _windows_name_key(item.target.name):
@@ -200,11 +224,73 @@ def execute_image_rename_plan(
             ) from error
         renamed += 1
 
+    # 题名保留在本次计划中，不重新读取工作簿，也不从已有 PDF 推断分组。
+    groups = {}
+    for item in sorted(plan, key=lambda planned: planned.page):
+        groups.setdefault(item.file_title, []).append(item)
+    for title, items in groups.items():
+        target_pdf = items[0].target.parent / (title + ".pdf")
+        image_paths = [
+            item.source
+            if _windows_name_key(item.source.name) == _windows_name_key(item.target.name)
+            else item.target
+            for item in items
+        ]
+        try:
+            write_jpeg_pdf(image_paths, target_pdf, title)
+        except Exception as error:
+            raise ImageRenameExecutionError(
+                failed_path=target_pdf,
+                reason=error,
+                result=ImageRenameResult(
+                    total=len(plan),
+                    renamed=renamed,
+                    unchanged=unchanged,
+                    generated_pdfs=generated_pdfs,
+                ),
+                operation="生成 PDF",
+            ) from error
+        generated_pdfs += 1
+
     return ImageRenameResult(
         total=len(plan),
         renamed=renamed,
         unchanged=unchanged,
+        generated_pdfs=generated_pdfs,
     )
+
+
+def _validate_pdf_inputs(plan: Sequence[ImageRenamePlanItem]) -> None:
+    """首次改名前检查 PDF 名称占用、题名大小写歧义及每张源 JPG。
+
+    已存在的同名普通文件由 PDF 适配器原子更新；同名目录直接阻止任务。
+    批量服务在执行之前构建全部文件夹计划，因此后续文件夹中的坏图也
+    会阻止整批任务改动前面的文件夹。
+    """
+
+    target_titles = {}
+    for item in plan:
+        target = item.target.parent / (item.file_title + ".pdf")
+        target_key = _windows_name_key(target.name)
+        if target_key in target_titles:
+            if target_titles[target_key] != item.file_title:
+                raise ValueError(
+                    "文件题名存在 Windows 同名歧义：{}、{}".format(
+                        target_titles[target_key], item.file_title
+                    )
+                )
+            continue
+        target_titles[target_key] = item.file_title
+        if target.exists() and not target.is_file():
+            raise ValueError("PDF 目标名称已被目录占用：{}".format(target))
+
+    for item in plan:
+        try:
+            validate_jpeg(item.source)
+        except (OSError, ValueError) as error:
+            raise ValueError(
+                "JPG 图片校验失败：{}；原因：{}".format(item.source, error)
+            ) from error
 
 
 def _windows_name_key(name: str) -> str:

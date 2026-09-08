@@ -3,8 +3,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from excel_batch_renamer.batch_rename_images import BatchImageRenameResult
-from excel_batch_renamer.rename_images import ImageRenameResult
+from excel_batch_renamer.batch_rename_images import (
+    BatchImageRenameExecutionError,
+    BatchImageRenameResult,
+)
+from excel_batch_renamer.rename_images import (
+    ImageRenameExecutionError,
+    ImageRenameResult,
+)
 from excel_batch_renamer.ui.main_window import MainWindow
 from excel_batch_renamer.ui.rename_images_tab import RenameImagesTab
 
@@ -54,6 +60,7 @@ class UiTests(unittest.TestCase):
             renamed=2,
             unchanged=1,
             skipped_worksheets=("3", "5"),
+            generated_pdfs=2,
         )
 
         with patch(
@@ -69,6 +76,9 @@ class UiTests(unittest.TestCase):
         self.assertIn("已处理 2 个文件夹", status)
         self.assertIn("未变化 1 张", status)
         self.assertIn("已跳过空工作表 2 个（3、5）", status)
+        self.assertIn("已生成 PDF 2 个", status)
+        self.assertIn("保存在各原图片文件夹", status)
+        self.assertIn("JPG 已保留", status)
 
     def test_image_tab_loads_sheets_then_auto_selects_folder_match(self):
         tab = self.window.rename_images_tab
@@ -108,7 +118,7 @@ class UiTests(unittest.TestCase):
         tab.workbook_variable.set("C:/tasks.xlsx")
         tab.directory_variable.set("C:/001——")
         tab.worksheet_variable.set("2")
-        expected = ImageRenameResult(total=3, renamed=2, unchanged=1)
+        expected = ImageRenameResult(total=3, renamed=2, unchanged=1, generated_pdfs=1)
 
         with patch(
             "excel_batch_renamer.ui.rename_images_tab.rename_images",
@@ -123,6 +133,62 @@ class UiTests(unittest.TestCase):
         )
         self.assertIn("共处理 3 张", status)
         self.assertIn("未变化 1 张", status)
+        self.assertIn("已生成 PDF 1 个", status)
+        self.assertIn("保存在原图片文件夹", status)
+        self.assertIn("JPG 已保留", status)
+
+    def test_single_pdf_failure_shows_image_and_pdf_progress_in_existing_tab(self):
+        tab = self.window.rename_images_tab
+        tab.workbook_variable.set("C:/tasks.xlsx")
+        tab.directory_variable.set("C:/001——")
+        tab.worksheet_variable.set("1")
+        error = ImageRenameExecutionError(
+            Path("C:/001——/乙.pdf"),
+            PermissionError("PDF 被占用"),
+            ImageRenameResult(total=3, renamed=2, unchanged=1, generated_pdfs=1),
+            operation="生成 PDF",
+        )
+
+        with patch(
+            "excel_batch_renamer.ui.rename_images_tab.rename_images", side_effect=error
+        ), patch("tkinter.messagebox.showinfo") as success_popup, patch(
+            "tkinter.messagebox.showerror"
+        ) as error_popup:
+            tab._execute()
+
+        status = tab.status_variable.get()
+        self.assertIn("乙.pdf", status)
+        self.assertIn("PDF 被占用", status)
+        self.assertIn("已重命名 2 张，未变化 1 张，已生成 PDF 1 个", status)
+        success_popup.assert_not_called()
+        error_popup.assert_not_called()
+
+    def test_batch_pdf_failure_shows_aggregated_progress_in_existing_tab(self):
+        tab = self.window.batch_rename_images_tab
+        tab.workbook_variable.set("C:/tasks.xlsx")
+        tab.directory_variable.set("C:/parent")
+        folder = Path("C:/parent/002——")
+        error = BatchImageRenameExecutionError(
+            "2", folder, folder / "乙.pdf", PermissionError("PDF 被占用"),
+            BatchImageRenameResult(
+                folders=1, total=4, renamed=2, unchanged=1, generated_pdfs=2,
+                skipped_worksheets=("4",),
+            ),
+            operation="生成 PDF",
+        )
+
+        with patch(
+            "excel_batch_renamer.ui.batch_rename_images_tab.batch_rename_images",
+            side_effect=error,
+        ):
+            tab._execute()
+
+        status = tab.status_variable.get()
+        self.assertIn("工作表 2", status)
+        self.assertIn("乙.pdf", status)
+        self.assertIn("已完成 1 个文件夹", status)
+        self.assertIn("已重命名 2 张，未变化 1 张，已生成 PDF 2 个", status)
+        self.assertIn("已跳过空工作表 1 个（4）", status)
 
     def test_task_failure_is_reported_in_tab_without_raising(self):
         tab = self.window.create_folders_tab

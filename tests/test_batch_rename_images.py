@@ -4,7 +4,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from openpyxl import Workbook
+from PIL import Image
+from pypdf import PdfReader
 
+from excel_batch_renamer.infrastructure.pdf_writer import write_jpeg_pdf
 from excel_batch_renamer.batch_rename_images import (
     BatchImageRenameExecutionError,
     batch_rename_images,
@@ -37,7 +40,8 @@ class BatchRenameImagesTests(unittest.TestCase):
         folder = self.root / name
         folder.mkdir()
         for page in pages:
-            (folder / "{:03d}.jpg".format(page)).write_bytes(b"jpg")
+            with Image.new("RGB", (24 + page, 32), (page % 256, 80, 160)) as image:
+                image.save(folder / "{:03d}.jpg".format(page), format="JPEG")
         return folder
 
     def test_renames_all_numeric_worksheets_in_matching_folders(self):
@@ -60,6 +64,9 @@ class BatchRenameImagesTests(unittest.TestCase):
         self.assertTrue((first / "001甲.jpg").exists())
         self.assertTrue((first / "002甲.jpg").exists())
         self.assertTrue((second / "001乙.jpg").exists())
+        self.assertEqual(result.generated_pdfs, 2)
+        self.assertEqual(len(PdfReader(first / "甲.pdf").pages), 2)
+        self.assertEqual(len(PdfReader(second / "乙.pdf").pages), 1)
 
     def test_non_numeric_worksheets_are_ignored(self):
         self._write_workbook(
@@ -101,6 +108,7 @@ class BatchRenameImagesTests(unittest.TestCase):
             (0, 0, 0, 0),
         )
         self.assertEqual(result.skipped_worksheets, ("1",))
+        self.assertEqual(result.generated_pdfs, 0)
 
     def test_nonempty_sheet_with_invalid_headers_still_blocks_batch(self):
         workbook = Workbook()
@@ -184,6 +192,76 @@ class BatchRenameImagesTests(unittest.TestCase):
         result = batch_rename_images(self.workbook_path, self.root)
 
         self.assertEqual((result.renamed, result.unchanged), (0, 2))
+        self.assertEqual(result.generated_pdfs, 1)
+
+    def test_invalid_jpg_in_later_folder_blocks_entire_batch(self):
+        self._write_workbook(
+            [("1", [("甲", "1-1")]), ("2", [("乙", "1-1")])]
+        )
+        first = self._make_folder("001——", [1])
+        second = self._make_folder("002——", [1])
+        (second / "001.jpg").write_bytes(b"corrupt JPEG")
+
+        with self.assertRaisesRegex(ValueError, "JPG 图片校验失败.*002——"):
+            batch_rename_images(self.workbook_path, self.root)
+
+        self.assertEqual([path.name for path in first.iterdir()], ["001.jpg"])
+        self.assertEqual([path.name for path in second.iterdir()], ["001.jpg"])
+
+    def test_pdf_directory_conflict_in_later_folder_blocks_entire_batch(self):
+        self._write_workbook(
+            [("1", [("甲", "1-1")]), ("2", [("乙", "1-1")])]
+        )
+        first = self._make_folder("001——", [1])
+        second = self._make_folder("002——", [1])
+        (second / "乙.pdf").mkdir()
+
+        with self.assertRaisesRegex(ValueError, "PDF 目标名称已被目录占用"):
+            batch_rename_images(self.workbook_path, self.root)
+
+        self.assertEqual([path.name for path in first.iterdir()], ["001.jpg"])
+        self.assertTrue((second / "001.jpg").exists())
+        self.assertTrue((second / "乙.pdf").is_dir())
+
+    def test_pdf_failure_aggregates_progress_and_stops_later_folders(self):
+        self._write_workbook(
+            [
+                ("1", [("甲", "1-1")]),
+                ("2", [("乙", "1"), ("丙", "2-2")]),
+                ("3", [("丁", "1-1")]),
+                ("4", []),
+            ]
+        )
+        first = self._make_folder("001——", [1])
+        second = self._make_folder("002——", [1, 2])
+        third = self._make_folder("003——", [1])
+
+        def fail_third_pdf(image_paths, target_path, title):
+            if title == "丙":
+                raise PermissionError("PDF 被占用")
+            write_jpeg_pdf(image_paths, target_path, title)
+
+        with patch(
+            "excel_batch_renamer.rename_images.write_jpeg_pdf", side_effect=fail_third_pdf
+        ):
+            with self.assertRaises(BatchImageRenameExecutionError) as captured:
+                batch_rename_images(self.workbook_path, self.root)
+
+        error = captured.exception
+        self.assertEqual(error.worksheet_name, "2")
+        self.assertEqual(error.operation, "生成 PDF")
+        self.assertEqual(error.failed_path, second / "丙.pdf")
+        self.assertEqual(
+            (error.result.folders, error.result.total, error.result.renamed,
+             error.result.unchanged, error.result.generated_pdfs),
+            (1, 4, 3, 0, 2),
+        )
+        self.assertEqual(error.result.skipped_worksheets, ("4",))
+        self.assertIn("已生成 PDF 2 个", str(error))
+        self.assertEqual(len(PdfReader(first / "甲.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(second / "乙.pdf").pages), 1)
+        self.assertTrue((second / "002丙.jpg").exists())
+        self.assertEqual([path.name for path in third.iterdir()], ["001.jpg"])
 
     def test_filesystem_failure_stops_later_folders_without_rollback(self):
         self._write_workbook(
@@ -211,6 +289,7 @@ class BatchRenameImagesTests(unittest.TestCase):
         self.assertEqual(error.worksheet_name, "2")
         self.assertEqual(error.result.folders, 1)
         self.assertEqual(error.result.renamed, 1)
+        self.assertEqual(error.result.generated_pdfs, 1)
         self.assertTrue((first / "001甲.jpg").exists())
         self.assertTrue((second / "001.jpg").exists())
 

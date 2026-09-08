@@ -123,7 +123,7 @@ class RenameImagesTab(TaskTab):
         self.status_variable.set("已自动选择工作表 {}。".format(suggested))
 
     def _execute(self) -> None:
-        self.run_and_report(self._rename_images, "重命名图片")
+        self.run_and_report(self._rename_images, "重命名图片并生成 PDF")
 
     def _rename_images(self) -> str:
         workbook = self.require_path(self.workbook_variable.get(), "Excel 表格")
@@ -132,8 +132,12 @@ class RenameImagesTab(TaskTab):
         if not worksheet:
             raise ValueError("请先选择工作表")
         result = rename_images(workbook, worksheet, directory)
-        return "完成：共处理 {} 张，已重命名 {} 张，未变化 {} 张".format(
+        return (
+            "完成：共处理 {} 张，已重命名 {} 张，未变化 {} 张；"
+            "已生成 PDF {} 个，保存在原图片文件夹（JPG 已保留）"
+        ).format(
             result.total,
             result.renamed,
             result.unchanged,
+            result.generated_pdfs,
         )

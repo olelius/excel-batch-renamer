@@ -42,6 +42,32 @@ class NamingTests(unittest.TestCase):
         self.assertFalse(worksheet_matches_folder("2", "001——"))
         self.assertFalse(worksheet_matches_folder("项目一", "001——"))
 
+    def test_coded_folder_uses_final_numeric_segment(self):
+        """编码目录取末段序号，工作表仍用数字名且保留原三位规则。"""
+        for folder_name, sequence in (
+            ("I74-6-256——", 256),
+            ("I74-6-006——已有名称", 6),
+            ("74-6-256——", 256),
+            ("001——", 1),
+        ):
+            with self.subTest(folder_name=folder_name):
+                self.assertEqual(extract_folder_sequence(folder_name), sequence)
+                self.assertEqual(worksheet_name_for_folder(folder_name), str(sequence))
+                self.assertTrue(worksheet_matches_folder(str(sequence), folder_name))
+
+        self.assertFalse(worksheet_matches_folder("I74-6-256", "I74-6-256——"))
+        self.assertFalse(worksheet_matches_folder("255", "I74-6-256——"))
+        for folder_name in (
+            "I74--256——",
+            "I74-6-0——",
+            "I74-6-XYZ——",
+            "I74-6-256",
+            "1——",
+        ):
+            with self.subTest(invalid_folder_name=folder_name):
+                with self.assertRaises(ValueError):
+                    extract_folder_sequence(folder_name)
+
     def test_build_image_name(self):
         self.assertEqual(
             build_image_name(1, "项目建议批复文件及项目建议书"),

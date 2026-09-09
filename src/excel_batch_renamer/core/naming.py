@@ -6,6 +6,9 @@ from typing import Union
 
 FOLDER_NAME_SEPARATOR = "——"
 _FOLDER_PREFIX_PATTERN = re.compile(r"^(?P<sequence>\d{3})——")
+_CODED_FOLDER_PREFIX_PATTERN = re.compile(
+    r"^(?:[A-Za-z0-9]+-)+(?P<sequence>[0-9]+)——"
+)
 
 
 def _as_positive_integer(value: Union[int, str], field_name: str) -> int:
@@ -42,11 +45,19 @@ def build_folder_name(sequence: Union[int, str], folder_name: str = "") -> str:
 
 
 def extract_folder_sequence(folder_name: str) -> int:
-    """从本项目文件夹名中提取三位序号。"""
+    """提取目录匹配序号：三位数字前缀，或编码前缀的末段数字。
+
+    例如 ``256——`` 和 ``I74-6-256——`` 都对应序号 256。这里只解析源
+    文件夹；重命名目标仍由 build_folder_name 统一生成三位数字前缀。
+    """
 
     match = _FOLDER_PREFIX_PATTERN.match(str(folder_name))
     if match is None:
-        raise ValueError("文件夹名称必须以三位序号和两个中文破折号开头")
+        match = _CODED_FOLDER_PREFIX_PATTERN.match(str(folder_name))
+    if match is None:
+        raise ValueError(
+            "文件夹名称应以三位序号或末段为数字的连字符编码加两个中文破折号开头"
+        )
     sequence = int(match.group("sequence"))
     if sequence < 1:
         raise ValueError("文件夹序号必须是正整数")
@@ -60,7 +71,7 @@ def worksheet_name_for_folder(folder_name: str) -> str:
 
 
 def worksheet_matches_folder(worksheet_name: str, folder_name: str) -> bool:
-    """判断数字工作表名称是否与文件夹前三位序号绑定。"""
+    """判断数字工作表名称是否与文件夹提取出的序号绑定。"""
 
     text = str(worksheet_name).strip()
     if not text.isdigit():

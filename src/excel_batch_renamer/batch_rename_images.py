@@ -139,7 +139,7 @@ def build_batch_image_rename_plan(
         matches = folders_by_sequence.get(sequence, [])
         if not matches:
             raise ValueError(
-                "工作表 {} 未找到前三位序号匹配的直属文件夹".format(
+                "工作表 {} 未找到序号匹配的直属文件夹".format(
                     worksheet_name
                 )
             )

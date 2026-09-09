@@ -41,6 +41,47 @@ class RenameFoldersTests(unittest.TestCase):
         self.assertTrue((self.base_path / "001——规划管理文件材料").is_dir())
         self.assertTrue((self.base_path / "002——").is_dir())
 
+    def test_coded_folder_renames_from_workbook_and_reruns_unchanged(self):
+        """真实任务表把编码占位目录归一为数字名称，并保留目录内容。"""
+        rows = [(sequence, None) for sequence in range(1, 256)]
+        rows.append((256, "验收文件"))
+        workbook_path = self._save_folder_workbook(rows)
+        for sequence in range(1, 256):
+            (self.base_path / "{:03d}——".format(sequence)).mkdir()
+        source = self.base_path / "I74-6-256——"
+        source.mkdir()
+        (source / "原有内容.txt").write_text("原有文件内容", encoding="utf-8")
+
+        result = rename_folders(workbook_path, self.base_path)
+
+        target = self.base_path / "256——验收文件"
+        self.assertEqual(result.renamed_count, 1)
+        self.assertEqual(result.unchanged_count, 255)
+        self.assertFalse(source.exists())
+        self.assertEqual(
+            (target / "原有内容.txt").read_text(encoding="utf-8"), "原有文件内容"
+        )
+
+        repeated = rename_folders(workbook_path, self.base_path)
+        self.assertEqual(repeated.renamed_count, 0)
+        self.assertEqual(repeated.unchanged_count, 256)
+        self.assertTrue((target / "原有内容.txt").is_file())
+
+    def test_coded_and_numeric_duplicate_sequence_blocks_entire_task(self):
+        """编码与普通前缀映射到同号时，前面的有效项也保持原样。"""
+        workbook_path = self._save_folder_workbook([(1, "名称一"), (2, "名称二")])
+        original_names = ("001——", "002——", "I74-6-2——")
+        for name in original_names:
+            (self.base_path / name).mkdir()
+
+        with self.assertRaisesRegex(ValueError, "匹配到多个文件夹"):
+            rename_folders(workbook_path, self.base_path)
+
+        for name in original_names:
+            self.assertTrue((self.base_path / name).is_dir())
+        self.assertFalse((self.base_path / "001——名称一").exists())
+        self.assertFalse((self.base_path / "002——名称二").exists())
+
     def test_unchanged_folder_does_not_call_filesystem_rename(self):
         rows = [FolderTaskRow(sequence=1, folder_name="")]
         (self.base_path / "001——").mkdir()

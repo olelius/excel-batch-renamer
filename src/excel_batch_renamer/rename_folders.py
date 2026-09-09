@@ -173,6 +173,8 @@ def _validate_task_sequences(
 
 
 def _find_project_folders(task_directory: Path) -> Dict[int, List[Path]]:
+    """按标准前缀或编码末段的数字归集直属文件夹，交由计划检查重号。"""
+
     folders_by_sequence: Dict[int, List[Path]] = {}
     for child in task_directory.iterdir():
         if not child.is_dir():

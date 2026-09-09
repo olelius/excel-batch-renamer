@@ -53,7 +53,7 @@ class BatchRenameImagesTests(unittest.TestCase):
             ]
         )
         first = self._make_folder("001——", [1, 2])
-        second = self._make_folder("002——材料", [1])
+        second = self._make_folder("I74-6-2——材料", [1])
 
         result = batch_rename_images(self.workbook_path, self.root)
 

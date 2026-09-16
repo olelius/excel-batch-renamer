@@ -3,10 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from excel_batch_renamer.batch_rename_images import (
-    BatchImageRenameExecutionError,
-    BatchImageRenameResult,
-)
+from excel_batch_renamer.catalog_reindex import CatalogReindexResult
 from excel_batch_renamer.rename_images import (
     ImageRenameExecutionError,
     ImageRenameResult,
@@ -50,35 +47,37 @@ class UiTests(unittest.TestCase):
             "C:/batch-images",
         )
 
-    def test_batch_image_tab_passes_workbook_and_parent_to_service(self):
+    def test_batch_image_tab_passes_two_workbooks_and_parent_to_service(self):
         tab = self.window.batch_rename_images_tab
-        tab.workbook_variable.set("C:/tasks.xlsx")
+        tab.file_workbook_variable.set("C:/项目文件目录.xlsx")
+        tab.drawing_workbook_variable.set("C:/项目图纸目录.xlsx")
         tab.directory_variable.set("C:/parent")
-        expected = BatchImageRenameResult(
-            folders=2,
-            total=3,
-            renamed=2,
-            unchanged=1,
-            skipped_worksheets=("3", "5"),
+        expected = CatalogReindexResult(
+            worksheets=7,
+            folders_renamed=7,
+            folders_unchanged=0,
+            images=10,
+            images_renamed=9,
+            images_unchanged=1,
             generated_pdfs=2,
+            mapping_path=Path("C:/parent/档号与新序号对应表.xlsx"),
         )
 
         with patch(
-            "excel_batch_renamer.ui.batch_rename_images_tab.batch_rename_images",
+            "excel_batch_renamer.ui.batch_rename_images_tab.organize_catalog_images",
             return_value=expected,
         ) as service:
             status = tab._rename_images()
 
         service.assert_called_once_with(
-            Path("C:/tasks.xlsx"),
+            Path("C:/项目文件目录.xlsx"),
+            Path("C:/项目图纸目录.xlsx"),
             Path("C:/parent"),
         )
-        self.assertIn("已处理 2 个文件夹", status)
+        self.assertIn("已编排 7 个工作表", status)
+        self.assertIn("文件夹已重命名 7 个", status)
         self.assertIn("未变化 1 张", status)
-        self.assertIn("已跳过空工作表 2 个（3、5）", status)
         self.assertIn("已生成 PDF 2 个", status)
-        self.assertIn("保存在各原图片文件夹", status)
-        self.assertIn("JPG 已保留", status)
 
     def test_image_tab_loads_sheets_then_auto_selects_folder_match(self):
         tab = self.window.rename_images_tab
@@ -162,33 +161,6 @@ class UiTests(unittest.TestCase):
         self.assertIn("已重命名 2 张，未变化 1 张，已生成 PDF 1 个", status)
         success_popup.assert_not_called()
         error_popup.assert_not_called()
-
-    def test_batch_pdf_failure_shows_aggregated_progress_in_existing_tab(self):
-        tab = self.window.batch_rename_images_tab
-        tab.workbook_variable.set("C:/tasks.xlsx")
-        tab.directory_variable.set("C:/parent")
-        folder = Path("C:/parent/002——")
-        error = BatchImageRenameExecutionError(
-            "2", folder, folder / "乙.pdf", PermissionError("PDF 被占用"),
-            BatchImageRenameResult(
-                folders=1, total=4, renamed=2, unchanged=1, generated_pdfs=2,
-                skipped_worksheets=("4",),
-            ),
-            operation="生成 PDF",
-        )
-
-        with patch(
-            "excel_batch_renamer.ui.batch_rename_images_tab.batch_rename_images",
-            side_effect=error,
-        ):
-            tab._execute()
-
-        status = tab.status_variable.get()
-        self.assertIn("工作表 2", status)
-        self.assertIn("乙.pdf", status)
-        self.assertIn("已完成 1 个文件夹", status)
-        self.assertIn("已重命名 2 张，未变化 1 张，已生成 PDF 2 个", status)
-        self.assertIn("已跳过空工作表 1 个（4）", status)
 
     def test_task_failure_is_reported_in_tab_without_raising(self):
         tab = self.window.create_folders_tab

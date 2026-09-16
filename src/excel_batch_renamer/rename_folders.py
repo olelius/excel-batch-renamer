@@ -153,7 +153,7 @@ def _validate_task_sequences(
     duplicates = set()
     for row in rows:
         if row.sequence < 1:
-            raise ValueError("文件夹任务表序号必须从 1 开始")
+            raise ValueError("文件夹重命名任务表序号必须是正整数")
         if row.sequence in rows_by_sequence:
             duplicates.add(row.sequence)
         else:
@@ -162,12 +162,6 @@ def _validate_task_sequences(
     if duplicates:
         values = "、".join("{:03d}".format(value) for value in sorted(duplicates))
         raise ValueError("文件夹任务表包含重复序号：{}".format(values))
-
-    maximum = max(rows_by_sequence)
-    missing = sorted(set(range(1, maximum + 1)) - set(rows_by_sequence))
-    if missing:
-        values = "、".join("{:03d}".format(value) for value in missing)
-        raise ValueError("文件夹任务表缺少连续序号：{}".format(values))
 
     return rows_by_sequence
 

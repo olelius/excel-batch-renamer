@@ -43,11 +43,7 @@ class RenameFoldersTests(unittest.TestCase):
 
     def test_coded_folder_renames_from_workbook_and_reruns_unchanged(self):
         """真实任务表把编码占位目录归一为数字名称，并保留目录内容。"""
-        rows = [(sequence, None) for sequence in range(1, 256)]
-        rows.append((256, "验收文件"))
-        workbook_path = self._save_folder_workbook(rows)
-        for sequence in range(1, 256):
-            (self.base_path / "{:03d}——".format(sequence)).mkdir()
+        workbook_path = self._save_folder_workbook([(256, "验收文件")])
         source = self.base_path / "I74-6-256——"
         source.mkdir()
         (source / "原有内容.txt").write_text("原有文件内容", encoding="utf-8")
@@ -56,7 +52,7 @@ class RenameFoldersTests(unittest.TestCase):
 
         target = self.base_path / "256——验收文件"
         self.assertEqual(result.renamed_count, 1)
-        self.assertEqual(result.unchanged_count, 255)
+        self.assertEqual(result.unchanged_count, 0)
         self.assertFalse(source.exists())
         self.assertEqual(
             (target / "原有内容.txt").read_text(encoding="utf-8"), "原有文件内容"
@@ -64,7 +60,7 @@ class RenameFoldersTests(unittest.TestCase):
 
         repeated = rename_folders(workbook_path, self.base_path)
         self.assertEqual(repeated.renamed_count, 0)
-        self.assertEqual(repeated.unchanged_count, 256)
+        self.assertEqual(repeated.unchanged_count, 1)
         self.assertTrue((target / "原有内容.txt").is_file())
 
     def test_coded_and_numeric_duplicate_sequence_blocks_entire_task(self):
@@ -136,16 +132,27 @@ class RenameFoldersTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "重复序号：001"):
             plan_folder_renames(rows, self.base_path)
 
-    def test_non_contiguous_task_sequence_blocks_planning(self):
+    def test_sparse_task_sequences_match_only_listed_folders(self):
         rows = [
             FolderTaskRow(sequence=1, folder_name="名称一"),
             FolderTaskRow(sequence=3, folder_name="名称三"),
         ]
         (self.base_path / "001——").mkdir()
+        unlisted = self.base_path / "002——未列出"
+        unlisted.mkdir()
         (self.base_path / "003——").mkdir()
 
-        with self.assertRaisesRegex(ValueError, "缺少连续序号：002"):
-            plan_folder_renames(rows, self.base_path)
+        plan = plan_folder_renames(rows, self.base_path)
+
+        self.assertEqual(
+            tuple(operation.source.name for operation in plan.operations),
+            ("001——", "003——"),
+        )
+        result = execute_folder_rename_plan(plan)
+        self.assertEqual((result.renamed_count, result.unchanged_count), (2, 0))
+        self.assertTrue(unlisted.is_dir())
+        self.assertTrue((self.base_path / "001——名称一").is_dir())
+        self.assertTrue((self.base_path / "003——名称三").is_dir())
 
     def test_duplicate_directory_sequence_blocks_all_renames(self):
         rows = [FolderTaskRow(sequence=1, folder_name="新名称")]

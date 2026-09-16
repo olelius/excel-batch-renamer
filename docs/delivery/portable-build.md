@@ -1,6 +1,6 @@
 # 便携目录构建与验证
 
-状态：v0.4.0 自动化回归、双便携目录构建与发布 ZIP 自检均已通过；真实 Windows 7 测试待用户执行。详见 [本次交付记录](../project-notes/2026-09-16-catalog-reindex-delivery.md)。
+状态：v0.4.1 自动化回归、双便携目录构建与发布 ZIP 自检均已通过；真实 Windows 7 测试待用户执行。详见 [本次交付记录](../project-notes/2026-09-16-pdf-start-page-delivery.md)。
 
 ## 构建基线
 

@@ -142,7 +142,7 @@ class UiTests(unittest.TestCase):
         tab.directory_variable.set("C:/001——")
         tab.worksheet_variable.set("1")
         error = ImageRenameExecutionError(
-            Path("C:/001——/乙.pdf"),
+            Path("C:/001——/002乙.pdf"),
             PermissionError("PDF 被占用"),
             ImageRenameResult(total=3, renamed=2, unchanged=1, generated_pdfs=1),
             operation="生成 PDF",
@@ -156,7 +156,7 @@ class UiTests(unittest.TestCase):
             tab._execute()
 
         status = tab.status_variable.get()
-        self.assertIn("乙.pdf", status)
+        self.assertIn("002乙.pdf", status)
         self.assertIn("PDF 被占用", status)
         self.assertIn("已重命名 2 张，未变化 1 张，已生成 PDF 1 个", status)
         success_popup.assert_not_called()

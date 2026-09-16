@@ -6,6 +6,7 @@ from typing import Union
 
 FOLDER_NAME_SEPARATOR = "——"
 _FOLDER_PREFIX_PATTERN = re.compile(r"^(?P<sequence>\d{3})——")
+_REINDEXED_FOLDER_PREFIX_PATTERN = re.compile(r"^(?P<sequence>\d{3})-")
 _CODED_FOLDER_PREFIX_PATTERN = re.compile(
     r"^(?:[A-Za-z0-9]+-)+(?P<sequence>[0-9]+)——"
 )
@@ -52,6 +53,8 @@ def extract_folder_sequence(folder_name: str) -> int:
     """
 
     match = _FOLDER_PREFIX_PATTERN.match(str(folder_name))
+    if match is None:
+        match = _REINDEXED_FOLDER_PREFIX_PATTERN.match(str(folder_name))
     if match is None:
         match = _CODED_FOLDER_PREFIX_PATTERN.match(str(folder_name))
     if match is None:

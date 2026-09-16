@@ -29,4 +29,4 @@ class MainWindow(tk.Tk):
         notebook.add(self.create_folders_tab, text="创建文件夹")
         notebook.add(self.rename_folders_tab, text="重命名文件夹")
         notebook.add(self.rename_images_tab, text="重命名图片")
-        notebook.add(self.batch_rename_images_tab, text="批量重命名图片")
+        notebook.add(self.batch_rename_images_tab, text="批量整理档案")

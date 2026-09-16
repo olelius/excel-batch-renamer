@@ -47,10 +47,11 @@ class UiTests(unittest.TestCase):
             "C:/batch-images",
         )
 
-    def test_batch_image_tab_passes_two_workbooks_and_parent_to_service(self):
+    def test_batch_image_tab_passes_three_workbooks_and_parent_to_service(self):
         tab = self.window.batch_rename_images_tab
         tab.file_workbook_variable.set("C:/项目文件目录.xlsx")
         tab.drawing_workbook_variable.set("C:/项目图纸目录.xlsx")
+        tab.archive_name_workbook_variable.set("C:/档号名称对应表.xlsx")
         tab.directory_variable.set("C:/parent")
         expected = CatalogReindexResult(
             worksheets=7,
@@ -72,6 +73,7 @@ class UiTests(unittest.TestCase):
         service.assert_called_once_with(
             Path("C:/项目文件目录.xlsx"),
             Path("C:/项目图纸目录.xlsx"),
+            Path("C:/档号名称对应表.xlsx"),
             Path("C:/parent"),
         )
         self.assertIn("已编排 7 个工作表", status)

@@ -13,6 +13,7 @@ class BatchRenameImagesTab(TaskTab):
         super().__init__(master)
         self.file_workbook_variable = tk.StringVar()
         self.drawing_workbook_variable = tk.StringVar()
+        self.archive_name_workbook_variable = tk.StringVar()
         self.directory_variable = tk.StringVar()
 
         self.add_path_picker(
@@ -24,6 +25,11 @@ class BatchRenameImagesTab(TaskTab):
             "图纸目录 Excel",
             self.drawing_workbook_variable,
             lambda: self.choose_xlsx(self.drawing_workbook_variable),
+        )
+        self.add_path_picker(
+            "档号名称 Excel",
+            self.archive_name_workbook_variable,
+            lambda: self.choose_xlsx(self.archive_name_workbook_variable),
         )
         self.add_path_picker(
             "父文件夹",
@@ -44,10 +50,15 @@ class BatchRenameImagesTab(TaskTab):
             self.drawing_workbook_variable.get(),
             "图纸目录 Excel",
         )
+        archive_name_workbook = self.require_path(
+            self.archive_name_workbook_variable.get(),
+            "档号名称 Excel",
+        )
         directory = self.require_path(self.directory_variable.get(), "父文件夹")
         result = organize_catalog_images(
             file_workbook,
             drawing_workbook,
+            archive_name_workbook,
             directory,
         )
         return (

@@ -30,12 +30,23 @@ class CatalogReindexTests(unittest.TestCase):
         return path
 
     def _folder(self, archive_code):
-        folder = self.root / "{}——{}卷".format(archive_code, archive_code)
+        folder = self.root / archive_code
         folder.mkdir()
         for page in (10, 20):
             with Image.new("RGB", (40, 50), color=(page, 80, 160)) as image:
                 image.save(str(folder / "{:03d}.jpg".format(page)), "JPEG")
         return folder
+
+    def _archive_names(self, archive_codes):
+        path = self.root / "档号名称对应表.xlsx"
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.append(["档号", "文件夹名称"])
+        for archive_code in archive_codes:
+            worksheet.append([archive_code, "{}卷".format(archive_code)])
+        workbook.save(str(path))
+        workbook.close()
+        return path
 
     def test_file_catalog_precedes_drawing_catalog_and_matches_by_archive_code(self):
         file_workbook = self._workbook(
@@ -53,10 +64,14 @@ class CatalogReindexTests(unittest.TestCase):
             "I42-4-380",
         ):
             self._folder(archive_code)
+        archive_names = self._archive_names(
+            ("I42-4-377", "I42-4-378", "I42-4-379", "I42-4-380")
+        )
 
         result = organize_catalog_images(
             file_workbook,
             drawing_workbook,
+            archive_names,
             self.root,
         )
 

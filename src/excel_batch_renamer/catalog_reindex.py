@@ -46,6 +46,7 @@ class CatalogReindexPlan:
 
     file_workbook_path: Path
     drawing_workbook_path: Path
+    archive_name_workbook_path: Path
     parent_directory: Path
     mapping_path: Path
     items: Tuple[CatalogMappingItem, ...]
@@ -68,6 +69,7 @@ class CatalogReindexResult:
 def organize_catalog_images(
     file_workbook_path: Path,
     drawing_workbook_path: Path,
+    archive_name_workbook_path: Path,
     parent_directory: Path,
 ) -> CatalogReindexResult:
     """文件目录在前、图纸目录在后，统一编排并执行全部改名与 PDF。"""
@@ -75,6 +77,7 @@ def organize_catalog_images(
     plan = build_catalog_reindex_plan(
         file_workbook_path,
         drawing_workbook_path,
+        archive_name_workbook_path,
         parent_directory,
     )
     _write_mapping_workbook(plan)
@@ -108,17 +111,20 @@ def organize_catalog_images(
 def build_catalog_reindex_plan(
     file_workbook_path: Path,
     drawing_workbook_path: Path,
+    archive_name_workbook_path: Path,
     parent_directory: Path,
 ) -> CatalogReindexPlan:
     """按档号自然顺序分配全局新序号并完成预检，不依赖标签位置。"""
 
     file_path = Path(file_workbook_path)
     drawing_path = Path(drawing_workbook_path)
+    archive_name_path = Path(archive_name_workbook_path)
     parent = Path(parent_directory)
     if file_path.resolve() == drawing_path.resolve():
         raise ValueError("文件目录和图纸目录必须选择两个不同的 Excel")
     _validate_workbook_name(file_path, FILE_CATALOG_LABEL)
     _validate_workbook_name(drawing_path, DRAWING_CATALOG_LABEL)
+    archive_names = _read_archive_names(archive_name_path)
     if not parent.is_dir():
         raise ValueError("图片任务父目录不存在或不是文件夹：{}".format(parent))
 
@@ -140,7 +146,14 @@ def build_catalog_reindex_plan(
     if len({name.casefold() for name in all_names}) != len(all_names):
         raise ValueError("文件目录与图纸目录包含重复档号")
     if all(_is_new_worksheet_name(name) for name in all_names):
-        return _build_repeat_plan(file_path, drawing_path, parent, workbook_sheets)
+        return _build_repeat_plan(
+            file_path,
+            drawing_path,
+            archive_name_path,
+            archive_names,
+            parent,
+            workbook_sheets,
+        )
     if any(_is_new_worksheet_name(name) for name in all_names):
         raise ValueError("两个目录工作簿同时包含原档号和新序号工作表")
 
@@ -151,7 +164,12 @@ def build_catalog_reindex_plan(
     for category, workbook_path, worksheet_names in workbook_sheets:
         for worksheet_name in worksheet_names:
             archive_code = str(worksheet_name).strip()
-            source_folder, folder_name = _match_archive_folder(
+            folder_name = archive_names.get(archive_code.casefold())
+            if folder_name is None:
+                raise ValueError(
+                    "档号名称 Excel 缺少档号：{}".format(archive_code)
+                )
+            source_folder, _ = _match_archive_folder(
                 directories,
                 archive_code,
                 claimed_folders,
@@ -181,6 +199,7 @@ def build_catalog_reindex_plan(
     return CatalogReindexPlan(
         file_workbook_path=file_path,
         drawing_workbook_path=drawing_path,
+        archive_name_workbook_path=archive_name_path,
         parent_directory=parent,
         mapping_path=parent / MAPPING_WORKBOOK_NAME,
         items=tuple(items),
@@ -198,6 +217,50 @@ def _worksheet_names(path: Path) -> List[str]:
     workbook = load_workbook(str(path), read_only=True, data_only=True)
     try:
         return [str(name).strip() for name in workbook.sheetnames]
+    finally:
+        workbook.close()
+
+
+def _read_archive_names(path: Path) -> Dict[str, str]:
+    """读取仅含“档号、文件夹名称”的对应表，输入表不接受序号列。"""
+
+    if not path.is_file() or path.suffix.lower() != ".xlsx":
+        raise ValueError("档号名称 Excel 不存在或格式不正确：{}".format(path))
+    workbook = load_workbook(str(path), read_only=True, data_only=True)
+    try:
+        if len(workbook.worksheets) != 1:
+            raise ValueError("档号名称 Excel 必须且只能包含一个工作表")
+        worksheet = workbook.worksheets[0]
+        header = [
+            "" if cell.value is None else "".join(str(cell.value).split())
+            for cell in next(worksheet.iter_rows(min_row=1, max_row=1))
+        ]
+        if "序号" in header:
+            raise ValueError("档号名称 Excel 不应包含“序号”列")
+        required = ("档号", "文件夹名称")
+        indexes = {}
+        for name in required:
+            matches = [index for index, value in enumerate(header) if value == name]
+            if len(matches) != 1:
+                raise ValueError("档号名称 Excel 第一行必须包含唯一列：{}".format(name))
+            indexes[name] = matches[0]
+        result: Dict[str, str] = {}
+        for row in worksheet.iter_rows(min_row=2, values_only=True):
+            if all(value is None or not str(value).strip() for value in row):
+                break
+            archive_code = str(row[indexes["档号"]]).strip()
+            folder_name = str(row[indexes["文件夹名称"]]).strip()
+            if not archive_code or archive_code == "None":
+                raise ValueError("档号名称 Excel 的档号不能为空")
+            if not folder_name or folder_name == "None":
+                raise ValueError("档号 {} 的文件夹名称不能为空".format(archive_code))
+            key = archive_code.casefold()
+            if key in result:
+                raise ValueError("档号名称 Excel 包含重复档号：{}".format(archive_code))
+            result[key] = folder_name
+        if not result:
+            raise ValueError("档号名称 Excel 没有有效数据")
+        return result
     finally:
         workbook.close()
 
@@ -403,6 +466,8 @@ def _renumber_folder_jpgs(folder_path: Path) -> None:
 def _build_repeat_plan(
     file_path: Path,
     drawing_path: Path,
+    archive_name_path: Path,
+    archive_names: Dict[str, str],
     parent: Path,
     workbook_sheets,
 ) -> CatalogReindexPlan:
@@ -423,25 +488,41 @@ def _build_repeat_plan(
             row = records.get(name)
             if row is None or row[0] != category:
                 raise ValueError("档号映射表与当前工作表不一致：{}".format(name))
-            target = parent / "{}-{}".format(name, row[3] or "")
-            if not target.is_dir():
+            archive_code = str(row[1]).strip()
+            folder_name = archive_names.get(archive_code.casefold())
+            if folder_name is None:
+                raise ValueError("档号名称 Excel 缺少档号：{}".format(archive_code))
+            matches = []
+            for path in parent.iterdir():
+                if not path.is_dir():
+                    continue
+                try:
+                    if extract_folder_sequence(path.name) == int(name):
+                        matches.append(path)
+                except ValueError:
+                    continue
+            if len(matches) != 1:
                 raise ValueError("新序号 {} 未找到对应文件夹".format(name))
-            _validate_image_inputs(workbook_path, name, target)
+            source = matches[0]
+            target = parent / "{}-{}".format(name, folder_name)
+            _validate_image_inputs(workbook_path, name, source)
             items.append(
                 CatalogMappingItem(
                     category=category,
                     workbook_path=path_by_category[category],
                     original_worksheet_name=name,
-                    archive_code=str(row[1]),
+                    archive_code=archive_code,
                     new_sequence=int(name),
-                    folder_name=str(row[3] or ""),
-                    source_folder=target,
+                    folder_name=folder_name,
+                    source_folder=source,
                     target_folder=target,
                 )
             )
+    _validate_folder_targets(items)
     return CatalogReindexPlan(
         file_workbook_path=file_path,
         drawing_workbook_path=drawing_path,
+        archive_name_workbook_path=archive_name_path,
         parent_directory=parent,
         mapping_path=mapping_path,
         items=tuple(items),

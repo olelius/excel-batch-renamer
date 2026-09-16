@@ -100,8 +100,12 @@ class RenameImagesTests(unittest.TestCase):
         self.assertTrue((folder / "010文件C.jpg").exists())
         self.assertTrue((folder / "017文件C.jpg").exists())
         self.assertEqual(result.generated_pdfs, 3)
-        for title, page_count in [("文件A", 4), ("文件B", 5), ("文件C", 8)]:
-            self.assertEqual(len(PdfReader(folder / (title + ".pdf")).pages), page_count)
+        for pdf_name, page_count in [
+            ("001文件A.pdf", 4),
+            ("005文件B.pdf", 5),
+            ("010文件C.pdf", 8),
+        ]:
+            self.assertEqual(len(PdfReader(folder / pdf_name).pages), page_count)
 
     def test_repeat_execution_recalculates_titles_and_unchanged_items(self):
         self._write_workbook([("1", [("旧题名", "001-002")])])
@@ -126,13 +130,13 @@ class RenameImagesTests(unittest.TestCase):
         self.assertTrue((folder / "002新题名.jpg").exists())
         self.assertEqual(first_repeat.generated_pdfs, 1)
         self.assertEqual(second_repeat.generated_pdfs, 1)
-        self.assertTrue((folder / "旧题名.pdf").is_file())
-        self.assertEqual(len(PdfReader(folder / "新题名.pdf").pages), 2)
+        self.assertTrue((folder / "001旧题名.pdf").is_file())
+        self.assertEqual(len(PdfReader(folder / "001新题名.pdf").pages), 2)
 
-    def test_acceptance_pages_six_to_ten_generate_five_page_pdf(self):
-        self._write_workbook([("1", [("验收文件", "6-10")])])
+    def test_explicit_final_range_uses_start_page_in_pdf_name(self):
+        self._write_workbook([("1", [("验收文件", "023-045")])])
         folder = self._make_folder()
-        self._make_images(folder, range(6, 11))
+        self._make_images(folder, range(23, 46))
 
         with patch(
             "excel_batch_renamer.rename_images.read_image_task", wraps=read_image_task
@@ -140,11 +144,11 @@ class RenameImagesTests(unittest.TestCase):
             result = rename_images(self.workbook_path, "1", folder)
 
         reader.assert_called_once_with(self.workbook_path, "1")
-        self.assertEqual((result.total, result.renamed, result.generated_pdfs), (5, 5, 1))
-        self.assertEqual(len(PdfReader(folder / "验收文件.pdf").pages), 5)
+        self.assertEqual((result.total, result.renamed, result.generated_pdfs), (23, 23, 1))
+        self.assertEqual(len(PdfReader(folder / "023验收文件.pdf").pages), 23)
         self.assertEqual(
             sorted(path.name for path in folder.glob("*.jpg")),
-            ["{:03d}验收文件.jpg".format(page) for page in range(6, 11)],
+            ["{:03d}验收文件.jpg".format(page) for page in range(23, 46)],
         )
 
     def test_non_adjacent_rows_with_same_title_share_one_pdf_in_page_order(self):
@@ -164,19 +168,19 @@ class RenameImagesTests(unittest.TestCase):
             writer.call_args_list[0].args,
             (
                 [folder / "{:03d}验收文件.jpg".format(page) for page in [6, 7, 9, 10]],
-                folder / "验收文件.pdf",
+                folder / "006验收文件.pdf",
                 "验收文件",
             ),
         )
-        self.assertEqual(len(PdfReader(folder / "验收文件.pdf").pages), 4)
-        self.assertEqual(len(PdfReader(folder / "附件.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(folder / "006验收文件.pdf").pages), 4)
+        self.assertEqual(len(PdfReader(folder / "008附件.pdf").pages), 1)
 
     def test_repeat_overwrites_existing_pdf_even_when_all_images_unchanged(self):
         self._write_workbook([("1", [("验收文件", "6-10")])])
         folder = self._make_folder()
         self._make_images(folder, range(6, 11))
         rename_images(self.workbook_path, "1", folder)
-        target_pdf = folder / "验收文件.pdf"
+        target_pdf = folder / "006验收文件.pdf"
         target_pdf.write_bytes(b"previous PDF content")
 
         result = rename_images(self.workbook_path, "1", folder)
@@ -196,8 +200,8 @@ class RenameImagesTests(unittest.TestCase):
 
         self.assertEqual((result.total, result.renamed, result.unchanged), (3, 1, 2))
         self.assertEqual(result.generated_pdfs, 2)
-        self.assertEqual(len(PdfReader(folder / "甲.pdf").pages), 1)
-        self.assertEqual(len(PdfReader(folder / "乙.pdf").pages), 2)
+        self.assertEqual(len(PdfReader(folder / "001甲.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(folder / "002乙.pdf").pages), 2)
         self.assertTrue((folder / "002乙.jpg").exists())
 
     def test_case_only_unchanged_jpg_is_included_in_pdf(self):
@@ -209,7 +213,7 @@ class RenameImagesTests(unittest.TestCase):
         result = rename_images(self.workbook_path, "1", folder)
 
         self.assertEqual((result.renamed, result.unchanged, result.generated_pdfs), (0, 1, 1))
-        self.assertEqual(len(PdfReader(folder / "文件A.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(folder / "001文件A.pdf").pages), 1)
 
     def test_case_ambiguous_titles_block_all_renames(self):
         self._write_workbook([("1", [("文件A", "1"), ("文件a", "2-2")])])
@@ -236,13 +240,13 @@ class RenameImagesTests(unittest.TestCase):
         self._write_workbook([("1", [("文件A", "1-1")])])
         folder = self._make_folder()
         self._make_images(folder, [1])
-        (folder / "文件A.pdf").mkdir()
+        (folder / "001文件A.pdf").mkdir()
 
         with self.assertRaisesRegex(ValueError, "PDF 目标名称已被目录占用"):
             rename_images(self.workbook_path, "1", folder)
 
         self.assertTrue((folder / "001.jpg").exists())
-        self.assertTrue((folder / "文件A.pdf").is_dir())
+        self.assertTrue((folder / "001文件A.pdf").is_dir())
 
     def test_pdf_failure_preserves_completed_images_and_pdf_progress(self):
         self._write_workbook([("1", [("甲", "1"), ("乙", "2-3")])])
@@ -263,17 +267,17 @@ class RenameImagesTests(unittest.TestCase):
 
         error = captured.exception
         self.assertEqual(error.operation, "生成 PDF")
-        self.assertEqual(error.failed_path, folder / "乙.pdf")
+        self.assertEqual(error.failed_path, folder / "002乙.pdf")
         self.assertEqual(
             (error.result.total, error.result.renamed, error.result.unchanged,
              error.result.generated_pdfs),
             (3, 2, 1, 1),
         )
         self.assertIn("已生成 PDF 1 个", str(error))
-        self.assertEqual(len(PdfReader(folder / "甲.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(folder / "001甲.pdf").pages), 1)
         self.assertTrue((folder / "002乙.jpg").exists())
         self.assertTrue((folder / "003乙.jpg").exists())
-        self.assertFalse((folder / "乙.pdf").exists())
+        self.assertFalse((folder / "002乙.pdf").exists())
 
     def test_scans_jpg_case_insensitively_and_ignores_subfolders(self):
         self._write_workbook([("1", [("文件A", "001-001")])])

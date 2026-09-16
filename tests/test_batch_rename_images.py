@@ -65,8 +65,8 @@ class BatchRenameImagesTests(unittest.TestCase):
         self.assertTrue((first / "002甲.jpg").exists())
         self.assertTrue((second / "001乙.jpg").exists())
         self.assertEqual(result.generated_pdfs, 2)
-        self.assertEqual(len(PdfReader(first / "甲.pdf").pages), 2)
-        self.assertEqual(len(PdfReader(second / "乙.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(first / "001甲.pdf").pages), 2)
+        self.assertEqual(len(PdfReader(second / "001乙.pdf").pages), 1)
 
     def test_non_numeric_worksheets_are_ignored(self):
         self._write_workbook(
@@ -214,14 +214,14 @@ class BatchRenameImagesTests(unittest.TestCase):
         )
         first = self._make_folder("001——", [1])
         second = self._make_folder("002——", [1])
-        (second / "乙.pdf").mkdir()
+        (second / "001乙.pdf").mkdir()
 
         with self.assertRaisesRegex(ValueError, "PDF 目标名称已被目录占用"):
             batch_rename_images(self.workbook_path, self.root)
 
         self.assertEqual([path.name for path in first.iterdir()], ["001.jpg"])
         self.assertTrue((second / "001.jpg").exists())
-        self.assertTrue((second / "乙.pdf").is_dir())
+        self.assertTrue((second / "001乙.pdf").is_dir())
 
     def test_pdf_failure_aggregates_progress_and_stops_later_folders(self):
         self._write_workbook(
@@ -250,7 +250,7 @@ class BatchRenameImagesTests(unittest.TestCase):
         error = captured.exception
         self.assertEqual(error.worksheet_name, "2")
         self.assertEqual(error.operation, "生成 PDF")
-        self.assertEqual(error.failed_path, second / "丙.pdf")
+        self.assertEqual(error.failed_path, second / "002丙.pdf")
         self.assertEqual(
             (error.result.folders, error.result.total, error.result.renamed,
              error.result.unchanged, error.result.generated_pdfs),
@@ -258,8 +258,8 @@ class BatchRenameImagesTests(unittest.TestCase):
         )
         self.assertEqual(error.result.skipped_worksheets, ("4",))
         self.assertIn("已生成 PDF 2 个", str(error))
-        self.assertEqual(len(PdfReader(first / "甲.pdf").pages), 1)
-        self.assertEqual(len(PdfReader(second / "乙.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(first / "001甲.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(second / "001乙.pdf").pages), 1)
         self.assertTrue((second / "002丙.jpg").exists())
         self.assertEqual([path.name for path in third.iterdir()], ["001.jpg"])
 

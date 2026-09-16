@@ -99,7 +99,7 @@ class CatalogReindexTests(unittest.TestCase):
             self.assertTrue((folder / "001{}资料.jpg".format(archive_code)).is_file())
             self.assertTrue((folder / "002{}资料.jpg".format(archive_code)).is_file())
             self.assertEqual(
-                len(PdfReader(folder / "{}资料.pdf".format(archive_code)).pages),
+                len(PdfReader(folder / "001{}资料.pdf".format(archive_code)).pages),
                 2,
             )
 

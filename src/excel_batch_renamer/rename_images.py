@@ -229,7 +229,7 @@ def execute_image_rename_plan(
     for item in sorted(plan, key=lambda planned: planned.page):
         groups.setdefault(item.file_title, []).append(item)
     for title, items in groups.items():
-        target_pdf = items[0].target.parent / (title + ".pdf")
+        target_pdf = _pdf_target_path(items)
         image_paths = [
             item.source
             if _windows_name_key(item.source.name) == _windows_name_key(item.target.name)
@@ -268,19 +268,33 @@ def _validate_pdf_inputs(plan: Sequence[ImageRenamePlanItem]) -> None:
     会阻止整批任务改动前面的文件夹。
     """
 
-    target_titles = {}
+    groups = {}
+    title_keys = {}
     for item in plan:
-        target = item.target.parent / (item.file_title + ".pdf")
+        title_key = _windows_name_key(item.file_title)
+        if title_key in title_keys and title_keys[title_key] != item.file_title:
+            raise ValueError(
+                "文件题名存在 Windows 同名歧义：{}、{}".format(
+                    title_keys[title_key],
+                    item.file_title,
+                )
+            )
+        title_keys[title_key] = item.file_title
+        groups.setdefault(item.file_title, []).append(item)
+
+    target_titles = {}
+    for title, items in groups.items():
+        target = _pdf_target_path(items)
         target_key = _windows_name_key(target.name)
         if target_key in target_titles:
-            if target_titles[target_key] != item.file_title:
+            if target_titles[target_key] != title:
                 raise ValueError(
                     "文件题名存在 Windows 同名歧义：{}、{}".format(
-                        target_titles[target_key], item.file_title
+                        target_titles[target_key], title
                     )
                 )
             continue
-        target_titles[target_key] = item.file_title
+        target_titles[target_key] = title
         if target.exists() and not target.is_file():
             raise ValueError("PDF 目标名称已被目录占用：{}".format(target))
 
@@ -291,6 +305,16 @@ def _validate_pdf_inputs(plan: Sequence[ImageRenamePlanItem]) -> None:
             raise ValueError(
                 "JPG 图片校验失败：{}；原因：{}".format(item.source, error)
             ) from error
+
+
+def _pdf_target_path(items: Sequence[ImageRenamePlanItem]) -> Path:
+    """使用同题名全部页中的最小页码作为 PDF 起始页前缀。"""
+
+    first = min(items, key=lambda item: item.page)
+    return first.target.parent / "{:03d}{}.pdf".format(
+        first.page,
+        first.file_title,
+    )
 
 
 def _windows_name_key(name: str) -> str:

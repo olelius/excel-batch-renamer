@@ -40,6 +40,8 @@ Desktop.ini
 *.key
 
 # Logs and temporary files
+AGENTS.md
+docs/RUNTIME_ISSUES.local.md
 *.log
 *.tmp
 *.temp

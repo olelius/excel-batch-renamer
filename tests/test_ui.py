@@ -10,6 +10,7 @@ from excel_batch_renamer.rename_images import (
 )
 from excel_batch_renamer.ui.main_window import MainWindow
 from excel_batch_renamer.ui.rename_images_tab import RenameImagesTab
+from excel_batch_renamer.update_file_dates import FileDateResult, FileDateExecutionError
 
 
 class UiTests(unittest.TestCase):
@@ -28,24 +29,63 @@ class UiTests(unittest.TestCase):
         if hasattr(cls, "window"):
             cls.window.destroy()
 
-    def test_main_window_has_four_independent_directory_variables(self):
+    def test_main_window_has_five_independent_directory_variables(self):
         create_tab = self.window.create_folders_tab
         folder_tab = self.window.rename_folders_tab
         image_tab = self.window.rename_images_tab
         batch_image_tab = self.window.batch_rename_images_tab
+        date_tab = self.window.update_file_dates_tab
 
         create_tab.directory_variable.set("C:/create")
         folder_tab.directory_variable.set("C:/rename")
         image_tab.directory_variable.set("C:/images")
         batch_image_tab.directory_variable.set("C:/batch-images")
+        date_tab.directory_variable.set("C:/dates")
 
         self.assertEqual(create_tab.directory_variable.get(), "C:/create")
         self.assertEqual(folder_tab.directory_variable.get(), "C:/rename")
         self.assertEqual(image_tab.directory_variable.get(), "C:/images")
+        self.assertEqual(date_tab.directory_variable.get(), "C:/dates")
+        notebook = date_tab.master
+        self.assertEqual(len(notebook.tabs()), 5)
+        self.assertEqual(notebook.tab(date_tab, "text"), "更新文件日期")
         self.assertEqual(
             batch_image_tab.directory_variable.get(),
             "C:/batch-images",
         )
+
+    def test_date_tab_passes_own_directory_and_input_date(self):
+        tab = self.window.update_file_dates_tab
+        tab.directory_variable.set("C:/档案")
+        tab.date_variable.set("2024-02-29")
+        with patch(
+            "excel_batch_renamer.ui.update_file_dates_tab.update_file_dates",
+            return_value=FileDateResult(3, 2, 1),
+        ) as service, patch("tkinter.messagebox.showinfo") as popup:
+            tab._execute()
+        service.assert_called_once_with(Path("C:/档案"), "2024-02-29")
+        self.assertIn("已修改 2 个，未变化 1 个", tab.status_variable.get())
+        popup.assert_not_called()
+
+    def test_date_tab_requires_own_directory(self):
+        tab = self.window.update_file_dates_tab
+        tab.directory_variable.set("")
+        with patch("excel_batch_renamer.ui.update_file_dates_tab.update_file_dates") as service:
+            tab._execute()
+        service.assert_not_called()
+        self.assertIn("请先选择任务文件夹", tab.status_variable.get())
+
+    def test_date_tab_failure_shows_failed_object_and_progress_without_popup(self):
+        tab = self.window.update_file_dates_tab
+        tab.directory_variable.set("C:/档案")
+        error = FileDateExecutionError(Path("C:/档案/文件.pdf"), 2, 1, 5, PermissionError("拒绝访问"))
+        with patch(
+            "excel_batch_renamer.ui.update_file_dates_tab.update_file_dates", side_effect=error
+        ), patch("tkinter.messagebox.showerror") as popup:
+            tab._execute()
+        self.assertIn("文件.pdf", tab.status_variable.get())
+        self.assertIn("已修改 2 个，未变化 1 个", tab.status_variable.get())
+        popup.assert_not_called()
 
     def test_batch_image_tab_passes_three_workbooks_and_parent_to_service(self):
         tab = self.window.batch_rename_images_tab

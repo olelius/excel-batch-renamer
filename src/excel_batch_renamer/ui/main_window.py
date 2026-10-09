@@ -7,10 +7,11 @@ from excel_batch_renamer.ui.batch_rename_images_tab import BatchRenameImagesTab
 from excel_batch_renamer.ui.create_folders_tab import CreateFoldersTab
 from excel_batch_renamer.ui.rename_folders_tab import RenameFoldersTab
 from excel_batch_renamer.ui.rename_images_tab import RenameImagesTab
+from excel_batch_renamer.ui.update_file_dates_tab import UpdateFileDatesTab
 
 
 class MainWindow(tk.Tk):
-    """包含四个相互独立任务标签页的单一主窗口。"""
+    """包含五个相互独立任务标签页的单一主窗口。"""
 
     def __init__(self) -> None:
         super().__init__()
@@ -25,8 +26,10 @@ class MainWindow(tk.Tk):
         self.rename_folders_tab = RenameFoldersTab(notebook)
         self.rename_images_tab = RenameImagesTab(notebook)
         self.batch_rename_images_tab = BatchRenameImagesTab(notebook)
+        self.update_file_dates_tab = UpdateFileDatesTab(notebook)
 
         notebook.add(self.create_folders_tab, text="创建文件夹")
         notebook.add(self.rename_folders_tab, text="重命名文件夹")
         notebook.add(self.rename_images_tab, text="重命名图片")
         notebook.add(self.batch_rename_images_tab, text="批量整理档案")
+        notebook.add(self.update_file_dates_tab, text="更新文件日期")

@@ -1,6 +1,6 @@
 # 便携目录构建与验证
 
-状态：v0.4.2 针对性检查、双便携目录构建与发布 ZIP 自检均已通过；真实 Windows 7 测试待用户执行。详见 [本次交付记录](../project-notes/2026-09-16-archive-name-delivery.md)。
+状态：v0.5.0 的 115 项自动化检查、双便携目录构建与发布 ZIP 自检均已通过；真实 Windows 7 测试待用户执行。详见 [本次交付记录](../project-notes/2026-10-09-file-dates-delivery.md)。
 
 ## 构建基线
 
@@ -74,7 +74,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\verify-relea
 4. 启动无控制台正式版自检；
 5. 输出目录文件数和总字节数。
 
-应用的 `--smoke-test` 除创建 Tkinter 窗口与导入业务模块外，还会实际创建两张临时 JPEG 并调用 PDF 适配器生成 PDF，以覆盖冻结程序中的图像解码和 PDF 写入依赖。单文件夹、批量任务与重跑规则由自动化回归覆盖，不在便携自检中另建一套完整业务测试。
+应用的 `--smoke-test` 除创建 Tkinter 窗口与导入业务模块外，还会实际创建两张临时 JPEG 并调用 PDF 适配器生成 PDF，以覆盖冻结程序中的图像解码和 PDF 写入依赖。随后实际更新 JPG、PDF 及嵌套 Excel 后缀文件的创建/修改日期，验证各自原时分秒、小数秒和访问时间。单文件夹、批量任务与重跑规则由自动化回归覆盖，不在便携自检中另建一套完整业务测试。
 
 `package-release.ps1` 生成正式版、测试版 ZIP 和 `SHA256SUMS.txt`；`verify-release-archives.ps1` 把两个 ZIP 解压到项目 `.artifacts` 下的唯一临时目录，分别运行自检后再清理该目录。
 
@@ -84,7 +84,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\packaging\verify-relea
 
 - 打包入口可以启动；
 - Tkinter 主窗口可以创建；
-- openpyxl 和四个业务服务已经被打入程序；
+- openpyxl 和五个任务模式的业务服务已经被打入程序；
+- 创建/修改日期的 Win32 属性 API 可在冻结程序中实际读写，无需新依赖；
 - ReportLab、Pillow 及图像运行依赖能够在冻结程序中完成实际 JPEG 到 PDF 写入；
 - 正式版与测试版使用同一业务代码；
 - 正式版使用无控制台启动器；

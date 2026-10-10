@@ -16,7 +16,7 @@ from excel_batch_renamer.core.naming import (
     worksheet_matches_folder,
     worksheet_name_for_folder,
 )
-from excel_batch_renamer.core.page_ranges import build_page_title_map
+from excel_batch_renamer.core.page_ranges import derive_page_ranges
 from excel_batch_renamer.infrastructure.pdf_writer import (
     validate_jpeg,
     write_jpeg_pdf,
@@ -29,12 +29,16 @@ from excel_batch_renamer.infrastructure.xlsx_reader import (
 
 @dataclass(frozen=True)
 class ImageRenamePlanItem:
-    """一张图片的路径、页码和本次 Excel 题名，供改名与 PDF 分组复用。"""
+    """图片路径、页码、题名及所属目录记录的起始页，供改名和逐行 PDF 复用。
+
+    record_start_page 保留原 Excel 行的页次边界，不以相同题名或连续图片反推分组。
+    """
 
     page: int
     source: Path
     target: Path
     file_title: str
+    record_start_page: int
 
 
 @dataclass(frozen=True)
@@ -117,8 +121,12 @@ def build_image_rename_plan(
         )
 
     rows = read_image_task(workbook_path, selected_worksheet)
-    page_titles = build_page_title_map(rows)
-    if not page_titles:
+    page_records = {
+        page: page_range
+        for page_range in derive_page_ranges(rows)
+        for page in range(page_range.start_page, page_range.end_page + 1)
+    }
+    if not page_records:
         raise ValueError("工作表没有可执行的图片任务")
 
     images_by_page = {}
@@ -140,7 +148,7 @@ def build_image_rename_plan(
             )
         images_by_page[page] = path
 
-    expected_pages = set(page_titles)
+    expected_pages = set(page_records)
     actual_pages = set(images_by_page)
     missing_pages = sorted(expected_pages - actual_pages)
     if missing_pages:
@@ -159,7 +167,8 @@ def build_image_rename_plan(
     source_keys = {_windows_name_key(path.name) for path in images_by_page.values()}
     for page in sorted(expected_pages):
         source = images_by_page[page]
-        target = folder_path / build_image_name(page, page_titles[page])
+        record = page_records[page]
+        target = folder_path / build_image_name(page, record.file_title)
         target_key = _windows_name_key(target.name)
 
         if target_key in target_owners:
@@ -172,7 +181,7 @@ def build_image_rename_plan(
         if target.exists() and target_key not in source_keys:
             raise ValueError("目标名称已被占用：{}".format(target))
 
-        plan.append(ImageRenamePlanItem(page, source, target, page_titles[page]))
+        plan.append(ImageRenamePlanItem(page, source, target, record.file_title, record.start_page))
 
     _validate_pdf_inputs(plan)
     return plan
@@ -183,7 +192,7 @@ def rename_images(
     worksheet_name: str,
     folder_path: Path,
 ) -> ImageRenameResult:
-    """校验、重命名 JPG 并按题名自动生成 PDF，保留原图片。"""
+    """校验、重命名 JPG 并按每条目录记录自动生成独立 PDF，保留原图片。"""
 
     plan = build_image_rename_plan(workbook_path, worksheet_name, folder_path)
     return execute_image_rename_plan(plan)
@@ -192,9 +201,9 @@ def rename_images(
 def execute_image_rename_plan(
     plan: Sequence[ImageRenamePlanItem],
 ) -> ImageRenameResult:
-    """执行已完整校验的图片计划，再从本次改名后路径生成同题名 PDF。
+    """执行已完整校验的图片计划，再从本次改名后路径逐行生成独立 PDF。
 
-    同一题名在不同 Excel 行中出现时仍按页码升序归入同一个 PDF。
+    每条 Excel 记录的页次范围对应一个 PDF，相邻或不相邻的同题名记录都不合并。
     每次重跑都重新生成同名 PDF，不依赖执行记录或删除旧题名的 PDF。
     """
 
@@ -224,11 +233,9 @@ def execute_image_rename_plan(
             ) from error
         renamed += 1
 
-    # 题名保留在本次计划中，不重新读取工作簿，也不从已有 PDF 推断分组。
-    groups = {}
-    for item in sorted(plan, key=lambda planned: planned.page):
-        groups.setdefault(item.file_title, []).append(item)
-    for title, items in groups.items():
+    # 保留 Excel 行的起始页作为记录标识，不按题名或已有 PDF 推断分组。
+    for items in _group_pdf_items(plan).values():
+        title = items[0].file_title
         target_pdf = _pdf_target_path(items)
         image_paths = [
             item.source
@@ -268,7 +275,6 @@ def _validate_pdf_inputs(plan: Sequence[ImageRenamePlanItem]) -> None:
     会阻止整批任务改动前面的文件夹。
     """
 
-    groups = {}
     title_keys = {}
     for item in plan:
         title_key = _windows_name_key(item.file_title)
@@ -280,10 +286,10 @@ def _validate_pdf_inputs(plan: Sequence[ImageRenamePlanItem]) -> None:
                 )
             )
         title_keys[title_key] = item.file_title
-        groups.setdefault(item.file_title, []).append(item)
 
     target_titles = {}
-    for title, items in groups.items():
+    for items in _group_pdf_items(plan).values():
+        title = items[0].file_title
         target = _pdf_target_path(items)
         target_key = _windows_name_key(target.name)
         if target_key in target_titles:
@@ -307,12 +313,21 @@ def _validate_pdf_inputs(plan: Sequence[ImageRenamePlanItem]) -> None:
             ) from error
 
 
+def _group_pdf_items(plan: Sequence[ImageRenamePlanItem]) -> dict:
+    """按目录记录起始页分组，各组及组内图片均按页码升序，不跨记录合并。"""
+
+    groups = {}
+    for item in sorted(plan, key=lambda planned: planned.page):
+        groups.setdefault(item.record_start_page, []).append(item)
+    return groups
+
+
 def _pdf_target_path(items: Sequence[ImageRenamePlanItem]) -> Path:
-    """使用同题名全部页中的最小页码作为 PDF 起始页前缀。"""
+    """使用当前目录记录的起始页直接拼接题名作为 PDF 名称。"""
 
     first = min(items, key=lambda item: item.page)
     return first.target.parent / "{:03d}{}.pdf".format(
-        first.page,
+        first.record_start_page,
         first.file_title,
     )
 

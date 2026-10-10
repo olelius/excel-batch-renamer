@@ -68,6 +68,32 @@ class BatchRenameImagesTests(unittest.TestCase):
         self.assertEqual(len(PdfReader(first / "001甲.pdf").pages), 2)
         self.assertEqual(len(PdfReader(second / "001乙.pdf").pages), 1)
 
+    def test_duplicate_title_rows_are_separate_in_each_batch_folder(self):
+        self._write_workbook([
+            ("1", [("同名材料", "1"), ("同名材料", "3-4")]),
+            ("2", [("同名材料", "1"), ("同名材料", "3-4")]),
+        ])
+        folders = [self._make_folder("{:03d}——".format(index), range(1, 5)) for index in (1, 2)]
+        result = batch_rename_images(self.workbook_path, self.root)
+        self.assertEqual((result.folders, result.generated_pdfs), (2, 4))
+        for folder in folders:
+            for prefix in ("001", "003"):
+                self.assertEqual(len(PdfReader(folder / (prefix + "同名材料.pdf")).pages), 2)
+
+    def test_later_folder_duplicate_title_pdf_conflict_blocks_entire_batch(self):
+        self._write_workbook([
+            ("1", [("同名材料", "1"), ("同名材料", "3-4")]),
+            ("2", [("同名材料", "1"), ("同名材料", "3-4")]),
+        ])
+        first = self._make_folder("001——", range(1, 5))
+        second = self._make_folder("002——", range(1, 5))
+        (second / "003同名材料.pdf").mkdir()
+        with self.assertRaisesRegex(ValueError, "PDF 目标名称已被目录占用"):
+            batch_rename_images(self.workbook_path, self.root)
+        self.assertTrue((first / "001.jpg").exists())
+        self.assertTrue((second / "001.jpg").exists())
+        self.assertEqual(list(first.glob("*.pdf")), [])
+
     def test_non_numeric_worksheets_are_ignored(self):
         self._write_workbook(
             [("说明", []), ("1", [("文件", "001-001")])]

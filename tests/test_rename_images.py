@@ -151,7 +151,7 @@ class RenameImagesTests(unittest.TestCase):
             ["{:03d}验收文件.jpg".format(page) for page in range(23, 46)],
         )
 
-    def test_non_adjacent_rows_with_same_title_share_one_pdf_in_page_order(self):
+    def test_non_adjacent_rows_with_same_title_generate_separate_pdfs_in_page_order(self):
         self._write_workbook(
             [("1", [("验收文件", "6"), ("附件", "8"), ("验收文件", "9-10")])]
         )
@@ -163,17 +163,85 @@ class RenameImagesTests(unittest.TestCase):
         ) as writer:
             result = rename_images(self.workbook_path, "1", folder)
 
-        self.assertEqual(result.generated_pdfs, 2)
+        self.assertEqual(result.generated_pdfs, 3)
         self.assertEqual(
             writer.call_args_list[0].args,
             (
-                [folder / "{:03d}验收文件.jpg".format(page) for page in [6, 7, 9, 10]],
+                [folder / "{:03d}验收文件.jpg".format(page) for page in [6, 7]],
                 folder / "006验收文件.pdf",
                 "验收文件",
             ),
         )
-        self.assertEqual(len(PdfReader(folder / "006验收文件.pdf").pages), 4)
+        self.assertEqual(len(PdfReader(folder / "006验收文件.pdf").pages), 2)
         self.assertEqual(len(PdfReader(folder / "008附件.pdf").pages), 1)
+        self.assertEqual(len(PdfReader(folder / "009验收文件.pdf").pages), 2)
+        self.assertEqual(
+            writer.call_args_list[2].args,
+            ([folder / "009验收文件.jpg", folder / "010验收文件.jpg"],
+             folder / "009验收文件.pdf", "验收文件"),
+        )
+
+    def test_adjacent_rows_with_same_title_still_generate_separate_pdfs(self):
+        self._write_workbook([("1", [("验收文件", "1"), ("验收文件", "3-4")])])
+        folder = self._make_folder()
+        self._make_images(folder, [4, 1, 3, 2])
+        result = rename_images(self.workbook_path, "1", folder)
+        self.assertEqual(result.generated_pdfs, 2)
+        self.assertEqual(len(PdfReader(folder / "001验收文件.pdf").pages), 2)
+        self.assertEqual(len(PdfReader(folder / "003验收文件.pdf").pages), 2)
+
+    def test_five_screenshot_records_generate_five_pdfs_and_repeat_correctly(self):
+        rows = [
+            ("建设工程勘察合同书", "001"),
+            ("工程地质——岩土工程勘察报告书", "005"),
+            ("勘察报告", "012"),
+            ("建设工程勘察合同书", "020"),
+            ("勘察报告", "027-036"),
+        ]
+        self._write_workbook([("3", rows)])
+        folder = self._make_folder("003——")
+        self._make_images(folder, reversed(range(1, 37)))
+        original_bytes = {page: (folder / "{:03d}.jpg".format(page)).read_bytes()
+                          for page in range(1, 37)}
+        # 保留旧版的两份合并 PDF 路径；重跑必须按当前记录覆盖为各自独立页段。
+        (folder / "001建设工程勘察合同书.pdf").write_bytes(b"old merged contract PDF")
+        (folder / "012勘察报告.pdf").write_bytes(b"old merged report PDF")
+        (folder / "旧题名.pdf").write_bytes(b"keep unrelated PDF")
+
+        result = rename_images(self.workbook_path, "3", folder)
+        self.assertEqual((result.total, result.renamed, result.generated_pdfs), (36, 36, 5))
+        expected = [
+            ("001建设工程勘察合同书.pdf", 1, 4),
+            ("005工程地质——岩土工程勘察报告书.pdf", 5, 11),
+            ("012勘察报告.pdf", 12, 19),
+            ("020建设工程勘察合同书.pdf", 20, 26),
+            ("027勘察报告.pdf", 27, 36),
+        ]
+        for name, start, end in expected:
+            reader = PdfReader(folder / name)
+            self.assertEqual(len(reader.pages), end - start + 1)
+            title = name[3:-4]
+            # 测试图片每页宽度不同，核对实际 PDF 页序，不能只验证文件名和页数。
+            for pdf_page, page in zip(reader.pages, range(start, end + 1)):
+                self.assertAlmostEqual(float(pdf_page.mediabox.width), 24 + page)
+                self.assertEqual((folder / "{:03d}{}.jpg".format(page, title)).read_bytes(),
+                                 original_bytes[page])
+        self.assertEqual((folder / "旧题名.pdf").read_bytes(), b"keep unrelated PDF")
+
+        repeated = rename_images(self.workbook_path, "3", folder)
+        self.assertEqual((repeated.renamed, repeated.unchanged, repeated.generated_pdfs), (0, 36, 5))
+        for name, start, end in expected:
+            self.assertEqual(len(PdfReader(folder / name).pages), end - start + 1)
+
+    def test_later_duplicate_title_pdf_conflict_is_checked_before_any_rename(self):
+        self._write_workbook([("1", [("验收文件", "1"), ("验收文件", "3-4")])])
+        folder = self._make_folder()
+        self._make_images(folder, range(1, 5))
+        (folder / "003验收文件.pdf").mkdir()
+        with self.assertRaisesRegex(ValueError, "PDF 目标名称已被目录占用"):
+            rename_images(self.workbook_path, "1", folder)
+        self.assertTrue(all((folder / "{:03d}.jpg".format(page)).exists() for page in range(1, 5)))
+        self.assertFalse((folder / "001验收文件.pdf").exists())
 
     def test_repeat_overwrites_existing_pdf_even_when_all_images_unchanged(self):
         self._write_workbook([("1", [("验收文件", "6-10")])])

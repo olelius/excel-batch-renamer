@@ -48,6 +48,35 @@ class CatalogReindexTests(unittest.TestCase):
         workbook.close()
         return path
 
+    def test_duplicate_titles_remain_separate_through_catalog_reindex_and_repeat(self):
+        archive_codes = ("I42-4-377", "I42-4-378")
+        file_workbook = self._workbook("项目文件目录.xlsx", [archive_codes[0]])
+        drawing_workbook = self._workbook("项目图纸目录.xlsx", [archive_codes[1]])
+        for workbook_path in (file_workbook, drawing_workbook):
+            workbook = load_workbook(str(workbook_path))
+            worksheet = workbook.active
+            worksheet.cell(row=4, column=2, value="同名材料")
+            worksheet.cell(row=4, column=3, value="001")
+            worksheet.append([2, "同名材料", "002-002"])
+            workbook.save(str(workbook_path))
+            workbook.close()
+        for archive_code in archive_codes:
+            self._folder(archive_code)
+        archive_names = self._archive_names(archive_codes)
+
+        first = organize_catalog_images(file_workbook, drawing_workbook, archive_names, self.root)
+        self.assertEqual((first.worksheets, first.images, first.generated_pdfs), (2, 4, 4))
+        for index, archive_code in enumerate(archive_codes, start=1):
+            folder = self.root / "{:03d}-{}卷".format(index, archive_code)
+            for prefix in ("001", "002"):
+                self.assertEqual(len(PdfReader(folder / (prefix + "同名材料.pdf")).pages), 1)
+        repeated = organize_catalog_images(file_workbook, drawing_workbook, archive_names, self.root)
+        self.assertEqual((repeated.images, repeated.generated_pdfs), (4, 4))
+        for index, archive_code in enumerate(archive_codes, start=1):
+            folder = self.root / "{:03d}-{}卷".format(index, archive_code)
+            for prefix in ("001", "002"):
+                self.assertEqual(len(PdfReader(folder / (prefix + "同名材料.pdf")).pages), 1)
+
     def test_file_catalog_precedes_drawing_catalog_and_matches_by_archive_code(self):
         file_workbook = self._workbook(
             "项目文件目录.xlsx",
